@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { posterFor } from "../qr/poster";
 import { buildScene, canopyRadius, type Block, type BuildResult, type Kind, type SceneModel } from "../qr/scene";
 import { SEASON_TINT, writeBlockColor, type RGB, type Season, type Theme } from "./palette";
 import type { Hologram, PortraitCell } from "./portrait";
@@ -21,14 +22,12 @@ export class Diorama {
   private readonly scene = new THREE.Scene();
   private readonly turntable = new THREE.Group();
   private readonly persp = new THREE.PerspectiveCamera(30, 1, 0.1, 800);
-  private readonly ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
   private active: THREE.Camera = this.persp;
   private readonly canvas: HTMLCanvasElement;
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private readonly background = new THREE.Color(0xf3eee4);
   private readonly cream = new THREE.Color(0xfffaf6);
-  private readonly white = new THREE.Color(0xffffff);
   private readonly rgb: RGB = [0, 0, 0];
   private readonly clock = new THREE.Clock();
   private readonly buckets: Bucket[] = [];
@@ -44,6 +43,7 @@ export class Diorama {
   private readonly blossomMat: THREE.MeshBasicMaterial;
   private readonly system = new THREE.Group();
   private readonly halo = new THREE.Group();
+  private readonly codeHalo = new THREE.Group();
   private readonly bokeh = new THREE.Group();
   private readonly orbits: Orbit[] = [];
   private readonly stars: THREE.Points;
@@ -65,6 +65,7 @@ export class Diorama {
   private gazeY = 0;
   private readonly reducedMotion: boolean;
   private model: SceneModel | null = null;
+  private link = "";
   private season: Season = "spring";
   private tint = SEASON_TINT.spring;
   private eased = 0;
@@ -156,6 +157,7 @@ export class Diorama {
     this.turntable.add(this.blossoms);
     this.buildSystem();
     this.buildHalo();
+    this.buildCodeHalo();
     this.buildBokeh();
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.sky = new THREE.Group();
@@ -163,7 +165,6 @@ export class Diorama {
     this.sky.add(this.stars);
     this.sky.add(warmStars());
     this.sky.add(nebula());
-    this.sky.add(foregroundRocks());
     this.sky.visible = false;
     this.scene.add(this.sky);
 
@@ -190,6 +191,7 @@ export class Diorama {
   setText(text: string): BuildResult {
     const result = buildScene(text);
     if (!result.ok) return result;
+    this.link = text.trim();
     this.model = result.scene;
     this.rebuild();
     this.scatterPetals(true);
@@ -221,7 +223,7 @@ export class Diorama {
     if (this.theme === theme) return;
     this.theme = theme;
     (this.platform.material as THREE.MeshBasicMaterial).color.set(theme === "night" ? 0x141a28 : 0xe7dcc8);
-    (this.shadow.material as THREE.MeshBasicMaterial).color.set(theme === "night" ? 0x9eb4d8 : 0xffffff);
+    this.paintCodeHalo();
     this.paintDirty = true;
     this.viewDirty = true;
     this.scatterPetals(false);
@@ -296,35 +298,16 @@ export class Diorama {
   }
 
   download() {
-    const url = this.snapshot();
-    if (!url) return;
+    if (!this.model) return "failed" as const;
+    const poster = posterFor(this.model.blocks, this.model.grid, this.link, this.tint, this.theme);
+    if (!poster.scans) return "failed" as const;
+    const url = encodePng(poster.data, poster.width, poster.height);
+    if (!url) return "failed" as const;
     const link = document.createElement("a");
     link.href = url;
     link.download = "orbit-qr.png";
     link.click();
-  }
-
-  snapshot() {
-    if (!this.model) return "";
-    const eased = this.eased;
-    const pixels = this.model.grid * 16;
-    this.writeBlocks(1);
-    this.paintFoliage(1);
-    this.frameCamera(1);
-    this.updateBackdrop(1);
-    this.renderer.setPixelRatio(1);
-    this.renderer.setSize(pixels, pixels, false);
-    this.renderer.render(this.scene, this.active);
-    const url = this.canvas.toDataURL("image/png");
-    this.eased = eased;
-    this.syncBuffer();
-    this.writeBlocks(eased);
-    this.paintFoliage(eased);
-    this.frameCamera(eased);
-    this.updateBackdrop(eased);
-    this.paintPetals(0, eased);
-    this.renderer.render(this.scene, this.active);
-    return url;
+    return poster.fallback ? ("fallback" as const) : ("art" as const);
   }
 
   resize(width: number, height: number) {
@@ -368,6 +351,7 @@ export class Diorama {
       this.blossoms.visible = false;
       this.system.visible = false;
       this.halo.visible = false;
+      this.codeHalo.visible = false;
       this.stars.visible = false;
       if (this.portrait) this.portrait.visible = false;
       if (this.hologram) this.hologram.visible = false;
@@ -387,6 +371,7 @@ export class Diorama {
     const span = this.model.grid + 3.2;
     this.system.scale.setScalar(clamp(this.model.grid / 30, 0.95, 1.4));
     this.halo.scale.setScalar(clamp(this.model.grid / 33, 0.85, 1.25));
+    this.codeHalo.scale.setScalar(this.model.grid / 33);
     this.platform.scale.set(span, 1, span);
     this.shadow.scale.set(span * 1.12, span * 1.12, 1);
     this.growWood(canopyRadius(this.model.modules));
@@ -399,7 +384,10 @@ export class Diorama {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.spinBase(dt);
     this.spinSystem(dt);
-    if (!this.reducedMotion) this.halo.rotation.y += dt * 0.05;
+    if (!this.reducedMotion) {
+      this.halo.rotation.y += dt * 0.05;
+      this.codeHalo.rotation.y += dt * 0.04;
+    }
     this.turntable.rotation.y = this.yaw;
     if (this.animating) {
       const u = this.animMs === 0 ? 1 : Math.min(1, (now - this.animStart) / this.animMs);
@@ -424,7 +412,7 @@ export class Diorama {
     }
     this.paintHologram();
     this.paintPetals(dt, this.eased);
-    this.canvas.style.imageRendering = this.eased >= 1 ? "pixelated" : "";
+    this.canvas.style.imageRendering = "";
     this.renderer.render(this.scene, this.active);
     this.frame = requestAnimationFrame(this.tick);
   };
@@ -449,6 +437,10 @@ export class Diorama {
           xz = lerp(this.theme === "night" ? 0.9 : 0.8, 1, flatten);
           ySize = lerp(raised, 0.16, flatten);
           y = ySize / 2;
+          if (!block.dark) {
+            xz *= 1 - flatten;
+            ySize *= 1 - flatten;
+          }
         } else if (block.kind === "skirt") {
           const rock = this.theme === "night";
           if (rock && block.layer > 0) {
@@ -470,20 +462,21 @@ export class Diorama {
             y = ySize / 2;
           } else {
             xz = block.cap ? unit * flatten : 0;
-            ySize = block.cap ? lerp(0.16, 0.9, flatten) : 0;
+            ySize = block.cap ? lerp(0.16, 0.22, flatten) : 0;
             y = block.cap ? 0.1 + ySize / 2 : -40;
           }
         } else if (this.theme === "night" && block.kind === "trunk") {
           xz = unit * flatten;
-          ySize = lerp(0.16, 0.9, flatten);
+          ySize = lerp(0.16, 0.22, flatten);
           y = ySize / 2;
         } else if (!block.structural) {
           xz = 0;
           ySize = 0;
         } else {
           const taper = Math.max(0.72, 1.05 - block.layer * 0.04);
-          xz = unit * taper;
-          ySize = block.height;
+          const retract = 1 - flatten;
+          xz = unit * taper * retract;
+          ySize = block.height * retract;
           y = block.layer * 0.7 + ySize / 2;
         }
         this.dummy.position.set(block.x + ox, hidden ? -40 : y, block.z + oz);
@@ -524,23 +517,20 @@ export class Diorama {
   }
 
   private updateBackdrop(t: number) {
-    const fade = smoothstep(0.5, 1, t);
     if (this.theme === "night") {
       this.scene.background = null;
-      this.renderer.setClearColor(this.nightSky, fade);
+      this.renderer.setClearColor(this.nightSky, 0);
     } else {
-      const sky = this.cream;
-      const flat = this.white;
-      this.background.copy(sky).lerp(flat, fade);
+      this.background.copy(this.cream);
       this.scene.background = this.background;
       this.renderer.setClearColor(this.background, 1);
     }
     const alive = this.model !== null;
     const night = this.theme === "night";
     this.platform.visible = false;
-    this.shadow.visible = alive && t < 0.8;
-    (this.shadow.material as THREE.MeshBasicMaterial).opacity = (night ? 0.22 : 1) * (1 - smoothstep(0.15, 0.75, t));
-    this.petals.visible = alive && t < 0.9;
+    this.shadow.visible = alive && !night && t < 0.8;
+    (this.shadow.material as THREE.MeshBasicMaterial).opacity = 1 - smoothstep(0.15, 0.75, t);
+    this.petals.visible = alive;
   }
 
   private paintPetals(dt: number, t: number) {
@@ -598,43 +588,25 @@ export class Diorama {
 
   private frameCamera(t: number) {
     const grid = this.model?.grid ?? 25;
-    if (t >= 1) {
-      const half = grid / 2;
-      this.ortho.left = -half;
-      this.ortho.right = half;
-      this.ortho.top = half;
-      this.ortho.bottom = -half;
-      this.ortho.near = 0.1;
-      this.ortho.far = 300;
-      this.ortho.position.set(0, 50, 0);
-      this.ortho.up.set(0, 0, -1);
-      this.ortho.lookAt(0, 0, 0);
-      this.ortho.updateProjectionMatrix();
-      this.active = this.ortho;
-      return;
-    }
-
-    const night = this.theme === "night";
     const sway = !this.pointer && !this.reducedMotion ? 1 - smoothstep(0, 0.3, t) : 0;
     const az = lerp(this.orbitAz + this.gazeX * 0.05 * sway, 0, smoothstep(0.15, 0.92, t));
-    const nightEl = (34 * Math.PI) / 180;
-    const dayEl = (32 * Math.PI) / 180;
-    const el = lerp((night ? nightEl : dayEl) - this.gazeY * 0.025 * sway, Math.PI / 2 - 0.012, t);
-    const fov = lerp(night ? 28 : 30, 7, t);
+    const baseEl = (32 * Math.PI) / 180;
+    const el = lerp(baseEl - this.gazeY * 0.025 * sway, (78 * Math.PI) / 180, t);
+    const fov = lerp(30, 7, t);
     const aspect = this.width / Math.max(1, this.height);
     const topFrac = clamp(this.chromeTop / this.height, 0, 0.42);
     const botFrac = clamp(this.chromeBottom / this.height, 0, 0.62);
     const free = Math.max(0.3, 1 - topFrac - botFrac);
     const narrow = aspect < 1;
-    const targetH = free * (narrow ? 0.72 : night ? 0.58 : 0.5);
-    const targetW = narrow ? 0.72 : night ? 0.48 : 0.5;
-    const framedH = Math.sin(night ? nightEl : dayEl) / (2 * targetH);
+    const targetH = free * (narrow ? 0.72 : 0.5);
+    const targetW = narrow ? 0.72 : 0.5;
+    const framedH = Math.sin(baseEl) / (2 * targetH);
     const framedW = 1.12 / (2 * targetW * aspect);
     const framed = this.portraitHeight > 0 ? 0.72 : Math.max(framedH, framedW);
-    const halfWant = lerp(grid * framed, grid * 0.5, t);
+    const halfWant = lerp(grid * framed, grid * 0.86, t);
     const dist = halfWant / Math.tan((fov * Math.PI) / 360);
     const lift = (botFrac - topFrac) * halfWant;
-    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : -lift + (night ? 0 : grid * 0.18);
+    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : -lift + grid * 0.18;
     const lookY = lerp(pose, 0, t);
     this.persp.fov = fov;
     this.persp.aspect = this.canvas.width / Math.max(1, this.canvas.height);
@@ -904,6 +876,113 @@ export class Diorama {
     this.halo.visible = false;
   }
 
+  private buildCodeHalo() {
+    this.turntable.add(this.codeHalo);
+    const rings = [
+      { radius: 24.6, day: 0xf3b7c9, night: 0x8ec8ff, opacity: 0.7 },
+      { radius: 28.2, day: 0xe2c27a, night: 0xe2c27a, opacity: 0.45 },
+    ];
+    for (const ring of rings) {
+      const mesh = new THREE.Mesh(
+        new THREE.RingGeometry(ring.radius - 0.045, ring.radius + 0.045, 160),
+        new THREE.MeshBasicMaterial({
+          color: ring.day,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: ring.opacity,
+          depthWrite: false,
+        }),
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = 0.35;
+      mesh.userData.baseOpacity = ring.opacity;
+      mesh.material.userData.day = ring.day;
+      mesh.material.userData.night = ring.night;
+      this.codeHalo.add(mesh);
+    }
+    const pearls = [
+      { radius: 24.6, size: 0.34, phase: 0.6, day: 0xf7c3d0, night: 0xb7dcff },
+      { radius: 28.2, size: 0.46, phase: 2.4, day: 0xf3d7a2, night: 0xf0d7a4 },
+      { radius: 26.4, size: 0.28, phase: 4.2, day: 0xfff4ea, night: 0xf4f8ff },
+    ];
+    for (const pearl of pearls) {
+      const pivot = new THREE.Group();
+      pivot.rotation.y = pearl.phase;
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(pearl.size, 18, 12),
+        new THREE.MeshBasicMaterial({ color: pearl.day, transparent: true, opacity: 0.85 }),
+      );
+      sphere.position.set(pearl.radius, 1.1, 0);
+      sphere.userData.baseOpacity = 0.85;
+      (sphere.material as THREE.MeshBasicMaterial).userData.day = pearl.day;
+      (sphere.material as THREE.MeshBasicMaterial).userData.night = pearl.night;
+      pivot.add(sphere);
+      this.codeHalo.add(pivot);
+    }
+    const petal = petalTexture();
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + 0.3;
+      const radius = i % 2 === 0 ? 25.4 : 29;
+      const sprite = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.7, 0.48),
+        new THREE.MeshBasicMaterial({
+          map: petal,
+          color: 0xf7b7c8,
+          transparent: true,
+          opacity: 0.7,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      sprite.position.set(Math.cos(angle) * radius, 1.4, Math.sin(angle) * radius);
+      sprite.rotation.x = -Math.PI / 2;
+      sprite.rotation.z = angle;
+      sprite.userData.baseOpacity = 0.7;
+      (sprite.material as THREE.MeshBasicMaterial).userData.day = 0xf7b7c8;
+      (sprite.material as THREE.MeshBasicMaterial).userData.night = 0xc5dff8;
+      this.codeHalo.add(sprite);
+    }
+    const count = 48;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const radius = 25 + (i % 5) * 0.9;
+      positions[i * 3] = Math.cos(angle) * radius;
+      positions[i * 3 + 1] = 0.8 + (i % 4) * 0.35;
+      positions[i * 3 + 2] = Math.sin(angle) * radius;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const motes = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({
+        color: 0xffd0dc,
+        size: 0.12,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      }),
+    );
+    motes.userData.baseOpacity = 0.55;
+    (motes.material as THREE.PointsMaterial).userData.day = 0xffd0dc;
+    (motes.material as THREE.PointsMaterial).userData.night = 0xcfe6ff;
+    this.codeHalo.add(motes);
+    this.codeHalo.visible = false;
+    this.paintCodeHalo();
+  }
+
+  private paintCodeHalo() {
+    const night = this.theme === "night";
+    this.codeHalo.traverse((obj) => {
+      const material = (obj as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      if (!material || Array.isArray(material) || !("color" in material)) return;
+      const day = material.userData.day as number | undefined;
+      const nightColor = material.userData.night as number | undefined;
+      if (day === undefined || nightColor === undefined) return;
+      (material as THREE.MeshBasicMaterial).color.set(night ? nightColor : day);
+    });
+  }
+
   private buildBokeh() {
     this.persp.add(this.bokeh);
     const map = petalTexture();
@@ -1111,7 +1190,9 @@ export class Diorama {
     const hologramOn = night && this.hologram !== null;
     this.wood.visible = !night && visible && !posed;
     this.blossoms.visible = !night && visible && !posed;
+    const codeShow = smoothstep(0.55, 0.92, t);
     this.halo.visible = !night && visible && !posed;
+    this.codeHalo.visible = this.model !== null && !posed && codeShow > 0.02;
     this.bokeh.visible = !night && this.model !== null && t < 0.85;
     this.system.visible = night && visible && !posed;
     this.sky.visible = night && this.model !== null && t < 0.8;
@@ -1126,6 +1207,7 @@ export class Diorama {
     (this.stars.material as THREE.PointsMaterial).opacity = show;
     this.fadeSystem(show);
     this.fadeGroup(this.halo, show);
+    this.fadeGroup(this.codeHalo, codeShow);
     this.fadeGroup(this.bokeh, show);
     this.woodMat.opacity = show;
     this.woodMat.transparent = show < 0.98;
@@ -1394,48 +1476,6 @@ function nebula() {
   return sprite;
 }
 
-function rockTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
-  const context = canvas.getContext("2d");
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  if (!context) return texture;
-  context.filter = "blur(2px)";
-  context.fillStyle = "rgba(12, 10, 14, 0.82)";
-  context.beginPath();
-  context.ellipse(32, 34, 22, 16, 0.2, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = "rgba(28, 24, 30, 0.55)";
-  context.beginPath();
-  context.ellipse(24, 28, 8, 6, -0.4, 0, Math.PI * 2);
-  context.fill();
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function foregroundRocks() {
-  const group = new THREE.Group();
-  const map = rockTexture();
-  const spots: [number, number, number, number][] = [
-    [-38, 5, 24, 11],
-    [40, 7, 20, 9],
-    [-30, 18, -6, 7],
-    [32, 3, -14, 8],
-    [8, 22, 30, 6],
-  ];
-  for (const [x, y, z, scale] of spots) {
-    const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map, color: 0x14110f, transparent: true, opacity: 0.78, depthWrite: false }),
-    );
-    sprite.position.set(x, y, z);
-    sprite.scale.set(scale, scale * 0.7, 1);
-    group.add(sprite);
-  }
-  return group;
-}
-
 function shadowTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
@@ -1695,4 +1735,16 @@ function smoothstep(edge0: number, edge1: number, value: number) {
 
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
+function encodePng(data: Uint8ClampedArray, width: number, height: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return "";
+  const pixels = new Uint8ClampedArray(new ArrayBuffer(data.byteLength));
+  pixels.set(data);
+  context.putImageData(new ImageData(pixels, width, height), 0, 0);
+  return canvas.toDataURL("image/png");
 }

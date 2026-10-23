@@ -115,7 +115,11 @@ hintButton.addEventListener("click", (event) => {
   diorama.toggle();
 });
 
-downloadButton.addEventListener("click", () => diorama.download());
+downloadButton.addEventListener("click", () => {
+  const saved = diorama.download();
+  if (saved === "fallback") showMessage("Saved a high-contrast code. The colored version did not scan.", false);
+  else if (saved === "failed") showMessage("This code could not be verified.", false);
+});
 
 seasons.forEach((button) => {
   button.addEventListener("click", () => selectSeason(button.dataset.season as Season));
@@ -254,6 +258,20 @@ stageEl.addEventListener("drop", (event) => {
   if (file) usePortrait(file);
 });
 
+let natureReserve = 0;
+
+function dockBottom(rect: DOMRect, dockBox: DOMRect) {
+  const dock = document.querySelector(".dock");
+  const seasons = document.querySelector(".seasons");
+  const tints = document.querySelector(".tints");
+  if (dock && seasons && tints && getComputedStyle(seasons).display !== "none") {
+    const gap = Number.parseFloat(getComputedStyle(dock).rowGap) || 0;
+    natureReserve = seasons.getBoundingClientRect().height + tints.getBoundingClientRect().height + gap * 2;
+  }
+  const hidden = document.body.classList.contains("night") ? natureReserve : 0;
+  return Math.max(0, rect.bottom - dockBox.top + hidden);
+}
+
 function fitStage() {
   const rect = stageEl.getBoundingClientRect();
   const wide = Math.max(1, rect.width);
@@ -261,7 +279,7 @@ function fitStage() {
   const introBox = document.querySelector(".intro")?.getBoundingClientRect();
   const dockBox = document.querySelector(".dock")?.getBoundingClientRect();
   if (introBox && dockBox) {
-    diorama.setChrome(Math.max(0, introBox.bottom - rect.top), Math.max(0, rect.bottom - dockBox.top));
+    diorama.setChrome(Math.max(0, introBox.bottom - rect.top), dockBottom(rect, dockBox));
   } else {
     diorama.setChrome(0, 0);
   }
@@ -270,7 +288,7 @@ function fitStage() {
     let side = Math.floor(Math.min(wide, tall));
     if (introBox && dockBox) {
       const top = Math.max(0, introBox.bottom - rect.top);
-      const bottom = Math.max(0, rect.bottom - dockBox.top);
+      const bottom = dockBottom(rect, dockBox);
       const gap = Math.max(1, tall - top - bottom);
       side = Math.floor(Math.min(wide, gap) * 0.9);
       const shift = top + gap / 2 - tall / 2;

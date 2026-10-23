@@ -2,26 +2,26 @@ import { describe, expect, it } from "vitest";
 import { TINTS, luminance, writeArtColor, writeFlatColor, type RGB } from "./palette";
 
 describe("scan ink", () => {
-  it("keeps grass green and blossom dark enough to scan on white", () => {
+  it("paints the day code as garden ink on ivory", () => {
     const ink: RGB = [0, 0, 0];
     for (const tint of TINTS) {
+      writeFlatColor("path", false, tint, ink, "day");
+      expect(luminance(ink)).toBeGreaterThan(0.95);
       for (const kind of ["finder", "grass", "skirt"] as const) {
-        writeFlatColor(kind, true, tint, ink);
+        writeFlatColor(kind, true, tint, ink, "day");
         expect(ink[1]).toBeGreaterThan(ink[0]);
         expect(ink[1]).toBeGreaterThan(ink[2]);
         expect(luminance(ink)).toBeLessThan(0.2);
       }
       for (const kind of ["canopy", "trunk"] as const) {
-        writeFlatColor(kind, true, tint, ink);
+        writeFlatColor(kind, true, tint, ink, "day");
         expect(luminance(ink)).toBeLessThanOrEqual(0.2);
         expect(Math.max(...ink)).toBeGreaterThan(40);
       }
-      writeFlatColor("path", false, tint, ink);
-      expect(luminance(ink)).toBeGreaterThan(0.95);
     }
   });
 
-  it("paints the night code as light cyan on a dark field", () => {
+  it("paints the night code as light cyan on navy", () => {
     const ink: RGB = [0, 0, 0];
     writeFlatColor("path", false, "#e989a8", ink, "night");
     expect(luminance(ink)).toBeLessThan(0.05);

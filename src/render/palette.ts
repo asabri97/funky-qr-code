@@ -37,43 +37,40 @@ export function writeHex(hex: string, out: RGB) {
   out[2] = cached[2];
 }
 
-const LAWN: RGB = [28, 122, 54];
+const DAY_FIELD: RGB = [255, 252, 246];
+const DAY_LAWN: RGB = [28, 122, 54];
 const NIGHT_FIELD: RGB = [8, 12, 22];
-const NIGHT_FINDER: RGB = [150, 225, 255];
-const NIGHT_GLOW: RGB = [214, 246, 255];
+const NIGHT_FINDER: RGB = [214, 246, 255];
+const NIGHT_INK: RGB = [150, 225, 255];
 
 export function writeFlatColor(kind: Kind, dark: boolean, tint: string, out: RGB, theme: Theme = "day") {
   if (theme === "night") {
-    writeNightFlat(kind, dark, out);
+    if (!dark || kind === "path") {
+      out[0] = NIGHT_FIELD[0];
+      out[1] = NIGHT_FIELD[1];
+      out[2] = NIGHT_FIELD[2];
+      return;
+    }
+    const ink = kind === "finder" ? NIGHT_FINDER : NIGHT_INK;
+    out[0] = ink[0];
+    out[1] = ink[1];
+    out[2] = ink[2];
     return;
   }
   if (!dark || kind === "path") {
-    out[0] = 255;
-    out[1] = 255;
-    out[2] = 255;
+    out[0] = DAY_FIELD[0];
+    out[1] = DAY_FIELD[1];
+    out[2] = DAY_FIELD[2];
     return;
   }
-  if (kind === "grass" || kind === "finder" || kind === "skirt") {
-    out[0] = LAWN[0];
-    out[1] = LAWN[1];
-    out[2] = LAWN[2];
+  if (kind === "canopy" || kind === "trunk") {
+    writeHex(tint, out);
+    darkenTo(out, 0.2);
     return;
   }
-  writeHex(tint, out);
-  darkenTo(out, 0.2);
-}
-
-function writeNightFlat(kind: Kind, dark: boolean, out: RGB) {
-  if (!dark || kind === "path") {
-    out[0] = NIGHT_FIELD[0];
-    out[1] = NIGHT_FIELD[1];
-    out[2] = NIGHT_FIELD[2];
-    return;
-  }
-  const ink = kind === "canopy" || kind === "trunk" ? NIGHT_GLOW : NIGHT_FINDER;
-  out[0] = ink[0];
-  out[1] = ink[1];
-  out[2] = ink[2];
+  out[0] = DAY_LAWN[0];
+  out[1] = DAY_LAWN[1];
+  out[2] = DAY_LAWN[2];
 }
 
 function darkenTo(out: RGB, maxLum: number) {
