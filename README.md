@@ -10,7 +10,7 @@ Day is a cherry tree on stone, with grass around the edge. Night is a solar syst
 
 - **Link.** The text in the field is what the code encodes.
 - **Day / Night.** Grove or solar system. In day, the season buttons and the color dots change the blossoms.
-- **An image.** Drag a picture onto the plaza, or use **Drop an image**. In day it becomes a block picture. In night it stands up as a blue wireframe hologram of that picture and keeps facing you while the plaza turns. Scroll down and it fades so the code can be scanned. **Clear image** brings back the tree or the planets.
+- **An image.** Drag a picture onto the plaza, or use **Drop an image**. In day it becomes a block picture. In night it stands up as a cyan holographic projection of that picture, on a ringed platform, and keeps facing you while the plaza turns. Scroll down and it fades so the code can be scanned. **Remove hologram** at night, or **Remove picture** in day, brings back the planets or the tree.
 
 A dropped photo does not become the code. The flat view has to stay a real QR of the link, or it will not scan. The picture is the 3D scene in front of that.
 

@@ -29,19 +29,29 @@ input {
 }
 
 .page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 28px 16px;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .card {
-  width: min(440px, 100%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
   background: var(--card);
   color: var(--ink);
-  border-radius: 28px;
-  padding: 22px 18px 18px;
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
+  padding: 22px 0 18px;
+}
+
+.intro,
+.link-row,
+.seasons,
+.tints,
+.picture-row,
+.status {
+  width: min(440px, calc(100% - 36px));
+  margin-inline: auto;
 }
 
 .title-row {
@@ -93,9 +103,12 @@ input {
 
 .stage {
   position: relative;
+  display: grid;
+  place-items: center;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
   margin-top: 16px;
-  aspect-ratio: 1;
-  border-radius: 18px;
   overflow: hidden;
   background: var(--stage);
   cursor: pointer;
@@ -138,6 +151,7 @@ input:focus-visible {
 
 .hint {
   display: block;
+  width: fit-content;
   margin: 10px auto 0;
   border: 0;
   border-radius: 999px;
@@ -328,6 +342,19 @@ body.night input {
 
 body.night .tints button.on {
   box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #d7e2ff;
+}
+
+body.night .stage {
+  background:
+    radial-gradient(1.2px 1.2px at 12% 22%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 28% 68%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.4px 1.4px at 46% 34%, rgba(198, 220, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 63% 78%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.2px 1.2px at 74% 18%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 86% 52%, rgba(255, 214, 160, 0.55), transparent),
+    radial-gradient(1.3px 1.3px at 18% 84%, rgba(190, 210, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 54% 14%, rgba(255, 255, 255, 0.5), transparent),
+    #10182a;
 }
 
 body.night .nature {

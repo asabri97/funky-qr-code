@@ -166,26 +166,37 @@ export function buildScene(text: string): BuildResult {
       const outside = ix < 0 || ix >= grid || iz < 0 || iz >= grid;
       const sx = ix - origin;
       const sz = iz - origin;
-      if (sx * sx + sz * sz < 5.5) continue;
+      if (sx * sx + sz * sz < 6.5) continue;
       const rim = ix < 3 || iz < 3 || ix >= grid - 3 || iz >= grid - 3;
       const patch = hash((ix / 3) | 0, (iz / 3) | 0) > 0.4;
-      if (!outside && !rim && !patch) continue;
-      if (outside && hash(ix + 11, iz + 3) < 0.04) continue;
-      if (!outside && rim && hash(ix + 19, iz + 2) < 0.12) continue;
-      if (!outside && !rim && hash(ix + 8, iz + 2) < 0.2) continue;
-      const lean = hash(ix, iz) * 2 - 1;
-      const height = 0.5 + hash(ix + 2, iz + 9) * 0.7;
-      pushColumn(blocks, sx, sz, "skirt", 0, 1, height, lean, false, false, false, false);
-      if (hash(ix + 4, iz + 8) > 0.28) {
+      const rock =
+        (outside || rim || patch) &&
+        !(outside && hash(ix + 11, iz + 3) < 0.04) &&
+        !(!outside && rim && hash(ix + 19, iz + 2) < 0.12) &&
+        !(!outside && !rim && hash(ix + 8, iz + 2) < 0.2);
+      const lush =
+        !outside &&
+        ((rim && hash(ix + 19, iz + 2) > 0.18) ||
+          (!rim && hash((ix / 2) | 0, (iz / 2) | 0) > 0.46 && hash(ix + 8, iz + 2) > 0.34));
+      if (rock) {
+        const lean = hash(ix, iz) * 2 - 1;
+        const height = 0.42 + hash(ix + 2, iz + 9) * 0.38;
+        pushColumn(blocks, sx, sz, "skirt", 0, 1, height, lean, false, false, false, false);
+      }
+      if (!lush) continue;
+      const blades = 3;
+      for (let blade = 0; blade < blades; blade++) {
+        const angle = hash(ix + blade * 5, iz + 2) * Math.PI * 2;
+        const spread = 0.08 + hash(ix + 3, iz + blade) * 0.22;
         pushColumn(
           blocks,
-          sx + (hash(ix + 1, iz + 5) - 0.5) * 0.55,
-          sz + (hash(ix + 6, iz + 3) - 0.5) * 0.55,
+          sx + Math.cos(angle) * spread,
+          sz + Math.sin(angle) * spread,
           "skirt",
-          0,
           1,
-          height * 0.72,
-          -lean,
+          1,
+          0.38 + hash(ix + blade, iz + 9) * 0.48,
+          hash(ix + blade * 2, iz + 4) * 2 - 1,
           false,
           false,
           false,

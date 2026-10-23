@@ -40,6 +40,8 @@ function hintCopy(flat: boolean) {
 
 const diorama = new Diorama(view, (flat) => {
   hintButton.textContent = hintCopy(flat);
+  stageEl.classList.toggle("flat", flat);
+  fitStage();
 });
 
 function showMessage(message: string, overlay: boolean) {
@@ -75,6 +77,7 @@ function selectTheme(next: Theme) {
   });
   diorama.setTheme(next);
   hintButton.textContent = hintCopy(diorama.isFlat);
+  refreshPictureClear();
 }
 
 function grow(text: string) {
@@ -194,7 +197,7 @@ function usePortrait(file: File) {
       return;
     }
     diorama.setPortrait(cells, wire);
-    clearPictureButton.hidden = false;
+    refreshPictureClear();
     hintButton.textContent = hintCopy(diorama.isFlat);
     view.setAttribute(
       "aria-label",
@@ -209,10 +212,15 @@ function usePortrait(file: File) {
   image.src = url;
 }
 
+function refreshPictureClear() {
+  clearPictureButton.hidden = !diorama.hasPortrait;
+  clearPictureButton.textContent = theme === "night" ? "Remove hologram" : "Remove picture";
+}
+
 function clearPortrait() {
   diorama.setPortrait(null);
-  clearPictureButton.hidden = true;
   pictureField.value = "";
+  refreshPictureClear();
   hintButton.textContent = hintCopy(diorama.isFlat);
   view.setAttribute(
     "aria-label",
@@ -251,10 +259,23 @@ stageEl.addEventListener("drop", (event) => {
   if (file) usePortrait(file);
 });
 
-const observer = new ResizeObserver(() => {
+function fitStage() {
   const rect = stageEl.getBoundingClientRect();
-  diorama.resize(rect.width, rect.height);
-});
+  const wide = Math.max(1, rect.width);
+  const tall = Math.max(1, rect.height);
+  if (stageEl.classList.contains("flat")) {
+    const side = Math.floor(Math.min(wide, tall));
+    view.style.width = `${side}px`;
+    view.style.height = `${side}px`;
+    diorama.resize(side, side);
+    return;
+  }
+  view.style.width = "100%";
+  view.style.height = "100%";
+  diorama.resize(wide, tall);
+}
+
+const observer = new ResizeObserver(() => fitStage());
 observer.observe(stageEl);
 
 grow(linkField.value);

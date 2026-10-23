@@ -197,7 +197,7 @@ export function writeArtColor(
     return;
   }
   if (kind === "skirt") {
-    const base = shade > 0 ? ([156, 198, 86] as RGB) : ([92, 156, 64] as RGB);
+    const base: RGB = shade > 0.35 ? [186, 208, 92] : shade > -0.15 ? [78, 156, 58] : [46, 112, 42];
     out[0] = base[0];
     out[1] = base[1];
     out[2] = base[2];

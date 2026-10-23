@@ -168,6 +168,7 @@ describe("buildScene", () => {
       return ix > 3 && iz > 3 && ix < grid - 4 && iz < grid - 4;
     });
     expect(patches.length).toBeGreaterThan(30);
+    expect(patches.filter((block) => block.layer > 0).length).toBeGreaterThan(200);
   });
 
   it("decodes the flat mosaic back to the link", () => {

@@ -50,7 +50,11 @@ export class Diorama {
   private moonPivot: THREE.Group | null = null;
   private portrait: THREE.InstancedMesh | null = null;
   private hologram: THREE.Group | null = null;
-  private hologramUniforms: { uTime: { value: number }; uOpacity: { value: number } } | null = null;
+  private hologramUniforms: HoloUniforms | null = null;
+  private hologramFigure: THREE.Object3D | null = null;
+  private hologramDeck: THREE.Object3D | null = null;
+  private hologramFades: THREE.Material[] = [];
+  private hologramTexture: THREE.Texture | null = null;
   private portraitHeight = 0;
   private theme: Theme = "day";
   private readonly nightSky = new THREE.Color(0x070b16);
@@ -236,10 +240,9 @@ export class Diorama {
       this.portrait = mesh;
       this.portraitHeight = top;
     }
-    if (wire && wire.positions.length > 0) {
+    if (wire && wire.pixels.length > 0) {
       this.hologram = this.buildHologram(wire);
       this.scene.add(this.hologram);
-      this.portraitHeight = Math.max(this.portraitHeight, wire.height);
     }
     this.paintDirty = true;
     this.viewDirty = true;
@@ -405,7 +408,7 @@ export class Diorama {
     for (const bucket of this.buckets) {
       bucket.blocks.forEach((block, index) => {
         const fade = block.structural ? 1 : foliage;
-        const hidden = fade < 0.001;
+        let hidden = fade < 0.001;
         const tile = block.kind === "path" || block.kind === "grass" || block.kind === "finder";
         let xz = unit * fade;
         let ySize = block.height;
@@ -418,9 +421,17 @@ export class Diorama {
           y = 0.08;
         } else if (block.kind === "skirt") {
           const rock = this.theme === "night";
-          xz = (rock ? 0.62 : 0.46) * fade;
-          ySize = block.height * (rock ? 0.4 : 0.78);
-          y = ySize / 2;
+          if (rock && block.layer > 0) {
+            hidden = true;
+          } else if (rock) {
+            xz = 0.62 * fade;
+            ySize = block.height * 0.4;
+            y = ySize / 2;
+          } else {
+            xz = (0.18 + Math.abs(block.shade) * 0.07) * fade;
+            ySize = block.height * (block.layer > 0 ? 1.15 : 0.95);
+            y = ySize / 2;
+          }
         } else if (block.kind === "canopy") {
           xz = block.cap ? unit * flatten : 0;
           ySize = block.cap ? lerp(0.16, 0.9, flatten) : 0;
@@ -436,7 +447,12 @@ export class Diorama {
         }
         this.dummy.position.set(block.x + ox, hidden ? -40 : y, block.z + oz);
         this.dummy.scale.set(hidden ? 0 : xz, hidden ? 0 : ySize, hidden ? 0 : xz);
-        this.dummy.rotation.set(block.kind === "skirt" ? block.shade * 0.35 : 0, 0, block.kind === "skirt" ? block.shade * 0.45 : 0);
+        const grass = block.kind === "skirt" && this.theme !== "night";
+        this.dummy.rotation.set(
+          grass ? block.shade * 0.85 : block.kind === "skirt" ? block.shade * 0.35 : 0,
+          grass ? block.shade * 1.4 : 0,
+          grass ? block.shade * 0.72 : block.kind === "skirt" ? block.shade * 0.45 : 0,
+        );
         this.dummy.updateMatrix();
         bucket.mesh.setMatrixAt(index, this.dummy.matrix);
         writeBlockColor(
@@ -460,10 +476,16 @@ export class Diorama {
 
   private updateBackdrop(t: number) {
     const fade = smoothstep(0.5, 1, t);
-    const sky = this.theme === "night" ? this.nightSky : this.cream;
-    const flat = this.theme === "night" ? this.nightSky : this.white;
-    this.background.copy(sky).lerp(flat, fade);
-    this.renderer.setClearColor(this.background, 1);
+    if (this.theme === "night") {
+      this.scene.background = null;
+      this.renderer.setClearColor(this.nightSky, lerp(0.82, 1, fade));
+    } else {
+      const sky = this.cream;
+      const flat = this.white;
+      this.background.copy(sky).lerp(flat, fade);
+      this.scene.background = this.background;
+      this.renderer.setClearColor(this.background, 1);
+    }
     const alive = this.model !== null;
     this.platform.visible = alive && t < 1;
     this.shadow.visible = alive && t < 0.8;
@@ -767,46 +789,145 @@ export class Diorama {
     if (!this.hologram) return;
     this.scene.remove(this.hologram);
     this.hologram.traverse((obj) => {
-      const mesh = obj as THREE.Points;
+      const mesh = obj as THREE.Mesh;
       mesh.geometry?.dispose();
       const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (material && !Array.isArray(material)) material.dispose();
+      if (!material || Array.isArray(material)) return;
+      const mapped = material as THREE.MeshBasicMaterial;
+      if (mapped.map && mapped.map !== this.hologramTexture) mapped.map.dispose();
+      material.dispose();
     });
+    this.hologramTexture?.dispose();
     this.hologram = null;
     this.hologramUniforms = null;
+    this.hologramFigure = null;
+    this.hologramDeck = null;
+    this.hologramFades = [];
+    this.hologramTexture = null;
   }
 
-  private buildHologram(wire: Hologram) {
-    const uniforms = { uTime: { value: 0 }, uOpacity: { value: 1 } };
+  private buildHologram(plate: Hologram) {
+    const texture = hologramTexture(plate);
+    this.hologramTexture = texture;
+    const uniforms: HoloUniforms = {
+      uTime: { value: 0 },
+      uOpacity: { value: 1 },
+      uMap: { value: texture },
+      uTexel: { value: new THREE.Vector2(1 / plate.width, 1 / plate.height) },
+    };
     this.hologramUniforms = uniforms;
+    const aspect = plate.width / plate.height;
+    let worldH = 13.2;
+    let worldW = worldH * aspect;
+    if (worldW > 11) {
+      worldW = 11;
+      worldH = worldW / aspect;
+    }
+    const baseY = 2.4;
     const group = new THREE.Group();
-    const pointGeo = new THREE.BufferGeometry();
-    pointGeo.setAttribute("position", new THREE.BufferAttribute(wire.positions, 3));
-    pointGeo.setAttribute("along", new THREE.BufferAttribute(wire.along, 1));
-    pointGeo.setAttribute("bright", new THREE.BufferAttribute(wire.bright, 1));
-    const points = new THREE.Points(pointGeo, hologramMaterial(uniforms, true));
-    points.frustumCulled = false;
-    const lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute("position", new THREE.BufferAttribute(wire.positions.slice(), 3));
-    lineGeo.setAttribute("along", new THREE.BufferAttribute(wire.along.slice(), 1));
-    lineGeo.setAttribute("bright", new THREE.BufferAttribute(wire.bright.slice(), 1));
-    lineGeo.setIndex(new THREE.BufferAttribute(wire.lines, 1));
-    const lines = new THREE.LineSegments(lineGeo, hologramMaterial(uniforms, false));
-    lines.frustumCulled = false;
-    group.add(lines, points);
+    const figure = new THREE.Group();
+    const deck = new THREE.Group();
+    this.hologramFigure = figure;
+    this.hologramDeck = deck;
+    figure.position.y = 0;
+    deck.position.y = 1.7;
+
+    const radius = Math.max(2.6, worldW * 0.4);
+    deck.add(this.holoRing(radius * 0.42, radius * 0.48, 0.28));
+    deck.add(this.holoRing(radius * 0.68, radius * 0.76, 0.55));
+    deck.add(this.holoRing(radius * 0.9, radius * 0.98, 0.85));
+    for (let i = 0; i < 16; i++) {
+      const tick = new THREE.Mesh(
+        new THREE.BoxGeometry(i % 4 === 0 ? 0.55 : 0.28, 0.035, 0.035),
+        this.holoFadeMaterial(0x9af6ff, i % 4 === 0 ? 0.7 : 0.35),
+      );
+      const angle = (i / 16) * Math.PI * 2;
+      tick.position.set(Math.cos(angle) * radius, 0.02, Math.sin(angle) * radius);
+      tick.rotation.y = -angle;
+      deck.add(tick);
+    }
+
+    for (const x of [-worldW * 0.34, worldW * 0.08, worldW * 0.36]) {
+      const beam = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.16, worldH * 0.92),
+        this.holoFadeMaterial(0xffffff, 0.22, beamTexture()),
+      );
+      beam.position.set(x, baseY + worldH * 0.55, -0.55);
+      figure.add(beam);
+    }
+
+    const bloom = new THREE.Mesh(new THREE.PlaneGeometry(worldW * 1.06, worldH * 1.06), plateMaterial(uniforms, true));
+    bloom.position.set(0, baseY + worldH / 2, -0.04);
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(worldW, worldH), plateMaterial(uniforms, false));
+    body.position.set(0, baseY + worldH / 2, 0);
+    figure.add(bloom, body);
+
+    const scatter = hologramScatter(plate, worldW, worldH, baseY);
+    if (scatter) {
+      const material = new THREE.PointsMaterial({
+        size: 0.11,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      material.userData.base = 0.85;
+      this.hologramFades.push(material);
+      const bits = new THREE.Points(scatter, material);
+      bits.frustumCulled = false;
+      figure.add(bits);
+    }
+
+    const motes = hologramMotes(worldW, worldH);
+    const moteMat = moteMaterial(uniforms);
+    const motePoints = new THREE.Points(motes, moteMat);
+    motePoints.frustumCulled = false;
+    figure.add(motePoints);
+
+    group.add(deck, figure);
+    group.userData.span = worldH;
     group.visible = false;
     return group;
   }
 
+  private holoRing(inner: number, outer: number, base: number) {
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 80), this.holoFadeMaterial(0x7ef6ff, base));
+    mesh.rotation.x = -Math.PI / 2;
+    return mesh;
+  }
+
+  private holoFadeMaterial(color: number, base: number, map?: THREE.Texture) {
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      map,
+      transparent: true,
+      opacity: base,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    material.userData.base = base;
+    this.hologramFades.push(material);
+    return material;
+  }
+
   private paintHologram() {
-    if (!this.hologram || !this.hologramUniforms) return;
+    if (!this.hologram || !this.hologramUniforms || !this.hologramFigure || !this.hologramDeck) return;
     const show = 1 - smoothstep(0.04, 0.62, this.eased);
     const visible = this.theme === "night" && this.model !== null && show > 0.02;
     this.hologram.visible = visible;
     this.hologramUniforms.uTime.value = this.clock.elapsedTime;
     this.hologramUniforms.uOpacity.value = show;
+    for (const material of this.hologramFades) {
+      material.opacity = show * (material.userData.base as number);
+    }
+    const grid = this.model?.grid ?? 33;
+    const span = (this.hologram.userData.span as number) || 13.2;
+    this.hologram.scale.setScalar(Math.min(16, grid * 0.48) / span);
     if (!visible) return;
-    this.hologram.rotation.y = Math.atan2(this.persp.position.x, this.persp.position.z);
+    this.hologramFigure.rotation.y = Math.atan2(this.persp.position.x, this.persp.position.z);
+    this.hologramDeck.rotation.y = this.clock.elapsedTime * 0.22;
   }
 
   private paintFoliage(t: number) {
@@ -1039,65 +1160,224 @@ function shadowTexture() {
   return texture;
 }
 
-const HOLO_VERT = `
-  attribute float along;
-  attribute float bright;
-  varying float vAlong;
-  varying float vBright;
-  uniform float uTime;
+type HoloUniforms = {
+  uTime: { value: number };
+  uOpacity: { value: number };
+  uMap: { value: THREE.Texture | null };
+  uTexel: { value: THREE.Vector2 };
+};
+
+const PLATE_VERT = `
+  varying vec2 vUv;
   void main() {
-    vAlong = along;
-    vBright = bright;
-    vec3 p = position;
-    p.x += sin(uTime * 1.25 + position.y * 0.8) * 0.04;
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    gl_Position = projectionMatrix * mv;
-    gl_PointSize = clamp(360.0 / max(1.0, -mv.z), 1.8, 6.0);
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
-const HOLO_POINT_FRAG = `
-  varying float vAlong;
-  varying float vBright;
+const PLATE_FRAG = `
+  varying vec2 vUv;
+  uniform sampler2D uMap;
+  uniform vec2 uTexel;
   uniform float uTime;
+  uniform float uOpacity;
+  uniform float uBloom;
+
+  float luma(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+  }
+
+  void main() {
+    vec2 uv = vUv;
+    float slice = floor(uv.y * 64.0);
+    float tick = floor(uTime * 7.0);
+    float n = fract(sin(slice * 91.7 + tick * 13.1) * 43758.5);
+    float glitch = step(0.9, n);
+    uv.x += (n - 0.5) * 0.045 * glitch;
+
+    float shift = 0.0025 + glitch * 0.008;
+    vec4 texel = texture2D(uMap, uv);
+    vec3 src = vec3(
+      texture2D(uMap, uv + vec2(shift, 0.0)).r,
+      texel.g,
+      texture2D(uMap, uv - vec2(shift, 0.0)).b
+    );
+    float a = texel.a;
+    float lum = luma(src);
+    float lL = luma(texture2D(uMap, uv + vec2(-uTexel.x * 2.0, 0.0)).rgb);
+    float lR = luma(texture2D(uMap, uv + vec2(uTexel.x * 2.0, 0.0)).rgb);
+    float lU = luma(texture2D(uMap, uv + vec2(0.0, uTexel.y * 2.0)).rgb);
+    float lD = luma(texture2D(uMap, uv + vec2(0.0, -uTexel.y * 2.0)).rgb);
+    float edge = clamp((abs(lL - lum) + abs(lR - lum) + abs(lU - lum) + abs(lD - lum)) * 2.2, 0.0, 1.0);
+    float aL = texture2D(uMap, uv + vec2(-uTexel.x * 3.0, 0.0)).a;
+    float aR = texture2D(uMap, uv + vec2(uTexel.x * 3.0, 0.0)).a;
+    float aU = texture2D(uMap, uv + vec2(0.0, uTexel.y * 3.0)).a;
+    float aD = texture2D(uMap, uv + vec2(0.0, -uTexel.y * 3.0)).a;
+    float rim = clamp((abs(aL - a) + abs(aR - a) + abs(aU - a) + abs(aD - a)) * 1.4, 0.0, 1.0);
+    edge = max(edge, rim);
+
+    float scan = 0.72 + 0.28 * sin(uv.y * 180.0);
+    float sweep = smoothstep(0.045, 0.0, abs(fract(uv.y - uTime * 0.14) - 0.5));
+    float torso = smoothstep(0.2, 0.62, 1.0 - uv.y);
+    float strands = 0.72 + 0.28 * sin(uv.x * 140.0 + uv.y * 28.0);
+    float mag = step(0.94, n);
+
+    vec3 tint = vec3(0.28, 0.8, 1.0);
+    vec3 holo = mix(src, tint, 0.66);
+    holo *= 0.32 + lum * 1.25;
+    holo *= mix(1.0, strands, torso * lum);
+    holo += vec3(0.35, 0.95, 1.0) * edge * 1.05;
+    holo += vec3(0.55, 0.95, 1.0) * sweep * 0.4;
+    holo = mix(holo, vec3(1.0, 0.32, 0.82), mag * 0.8);
+
+    float empty = step(a, 0.05) + step(lum, 0.045);
+    if (uBloom > 0.5) {
+      float alpha = (edge * 0.9 + lum * 0.05) * scan * uOpacity;
+      if (alpha < 0.04 || (empty > 0.5 && edge < 0.25)) discard;
+      gl_FragColor = vec4(vec3(0.4, 0.92, 1.0) * (0.55 + edge), alpha);
+      return;
+    }
+
+    if (empty > 0.5 && edge < 0.22) discard;
+    float alpha = a * (0.42 + lum * 0.4 + edge * 0.55) * scan;
+    alpha = clamp(alpha, 0.0, 0.88) * uOpacity;
+    gl_FragColor = vec4(holo, alpha);
+  }
+`;
+
+const MOTE_VERT = `
+  attribute float aSeed;
+  varying float vSeed;
+  uniform float uTime;
+  void main() {
+    vSeed = aSeed;
+    vec3 p = position;
+    p.y = mod(position.y - 0.4 + uTime * (0.28 + aSeed * 0.7), 14.0) + 0.4;
+    p.x += sin(uTime * 0.8 + aSeed * 12.0) * 0.18;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = clamp(160.0 / max(1.0, -mv.z), 1.1, 3.2);
+  }
+`;
+
+const MOTE_FRAG = `
+  varying float vSeed;
   uniform float uOpacity;
   void main() {
     vec2 uv = gl_PointCoord - vec2(0.5);
     float dist = length(uv);
     if (dist > 0.5) discard;
-    float glow = smoothstep(0.5, 0.05, dist);
-    float band = fract(uTime * 0.2);
-    float scan = smoothstep(0.14, 0.0, abs(vAlong - band));
-    vec3 color = vec3(0.45, 0.88, 1.0) * (0.55 + vBright * 0.65 + scan * 0.9);
-    gl_FragColor = vec4(color, glow * uOpacity * (0.72 + scan));
+    float glow = smoothstep(0.5, 0.0, dist);
+    vec3 color = mix(vec3(0.4, 0.9, 1.0), vec3(1.0, 0.35, 0.82), step(0.72, vSeed));
+    gl_FragColor = vec4(color, glow * uOpacity * 0.85);
   }
 `;
 
-const HOLO_LINE_FRAG = `
-  varying float vAlong;
-  varying float vBright;
-  uniform float uTime;
-  uniform float uOpacity;
-  void main() {
-    float band = fract(uTime * 0.2);
-    float scan = smoothstep(0.16, 0.0, abs(vAlong - band));
-    vec3 color = vec3(0.45, 0.86, 1.0) * (0.7 + vBright * 0.4 + scan);
-    gl_FragColor = vec4(color, uOpacity * (0.85 + scan * 0.15));
-  }
-`;
-
-function hologramMaterial(
-  uniforms: { uTime: { value: number }; uOpacity: { value: number } },
-  points: boolean,
-) {
+function plateMaterial(uniforms: HoloUniforms, bloom: boolean) {
   return new THREE.ShaderMaterial({
-    uniforms,
+    uniforms: {
+      uTime: uniforms.uTime,
+      uOpacity: uniforms.uOpacity,
+      uMap: uniforms.uMap,
+      uTexel: uniforms.uTexel,
+      uBloom: { value: bloom ? 1 : 0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: bloom ? THREE.AdditiveBlending : THREE.NormalBlending,
+    side: THREE.DoubleSide,
+    vertexShader: PLATE_VERT,
+    fragmentShader: PLATE_FRAG,
+  });
+}
+
+function moteMaterial(uniforms: HoloUniforms) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: uniforms.uTime,
+      uOpacity: uniforms.uOpacity,
+    },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    vertexShader: HOLO_VERT,
-    fragmentShader: points ? HOLO_POINT_FRAG : HOLO_LINE_FRAG,
+    vertexShader: MOTE_VERT,
+    fragmentShader: MOTE_FRAG,
   });
+}
+
+function hologramTexture(plate: Hologram) {
+  const canvas = document.createElement("canvas");
+  canvas.width = plate.width;
+  canvas.height = plate.height;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  if (!context) return texture;
+  context.putImageData(new ImageData(new Uint8ClampedArray(plate.pixels), plate.width, plate.height), 0, 0);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function hologramScatter(plate: Hologram, worldW: number, worldH: number, baseY: number) {
+  const stride = Math.max(2, Math.floor(Math.max(plate.width, plate.height) / 42));
+  const positions: number[] = [];
+  const colors: number[] = [];
+  for (let y = 0; y < plate.height; y += stride) {
+    for (let x = 0; x < plate.width; x += stride) {
+      const index = (y * plate.width + x) * 4;
+      const alpha = plate.pixels[index + 3];
+      if (alpha < 24) continue;
+      const lum = (plate.pixels[index] + plate.pixels[index + 1] + plate.pixels[index + 2]) / (3 * 255);
+      if (lum < 0.05) continue;
+      const nx = (x / Math.max(1, plate.width - 1) - 0.5) * worldW;
+      const ny = (1 - y / Math.max(1, plate.height - 1)) * worldH + baseY;
+      const jx = ((x * 13 + y * 7) % 9) / 9 - 0.5;
+      positions.push(nx + jx * 0.22, ny, 0.18 + lum * 0.28);
+      if ((x + y) % 7 === 0) colors.push(1, 0.35, 0.85);
+      else colors.push(0.45 + lum * 0.2, 0.88, 1);
+    }
+  }
+  if (positions.length < 9) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  return geometry;
+}
+
+function hologramMotes(worldW: number, worldH: number) {
+  const positions: number[] = [];
+  const seeds: number[] = [];
+  const span = Math.max(8, Math.round(worldH * 10));
+  for (let i = 0; i < 90; i++) {
+    const angle = (i * 2.399) % (Math.PI * 2);
+    const radius = 0.4 + (i % 11) * 0.22 + worldW * 0.08;
+    positions.push(Math.cos(angle) * radius, 0.4 + ((i * 17) % span) / 10, Math.sin(angle) * 0.35);
+    seeds.push((i % 10) / 10);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("aSeed", new THREE.Float32BufferAttribute(seeds, 1));
+  return geometry;
+}
+
+function beamTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 16;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (!context) return texture;
+  const gradient = context.createLinearGradient(0, 0, 0, 128);
+  gradient.addColorStop(0, "rgba(150, 230, 255, 0)");
+  gradient.addColorStop(0.4, "rgba(170, 240, 255, 0.95)");
+  gradient.addColorStop(1, "rgba(150, 230, 255, 0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 16, 128);
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function petalHex(season: Season, tint: string) {
