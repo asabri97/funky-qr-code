@@ -176,8 +176,8 @@ export function buildScene(text: string): BuildResult {
         !(!outside && !rim && hash(ix + 8, iz + 2) < 0.2);
       const lush =
         !outside &&
-        ((rim && hash(ix + 19, iz + 2) > 0.18) ||
-          (!rim && hash((ix / 2) | 0, (iz / 2) | 0) > 0.46 && hash(ix + 8, iz + 2) > 0.34));
+        ((rim && hash(ix + 19, iz + 2) > 0.08) ||
+          (!rim && hash(ix + 3, iz + 5) > 0.34));
       if (rock) {
         const lean = hash(ix, iz) * 2 - 1;
         const height = 0.42 + hash(ix + 2, iz + 9) * 0.38;

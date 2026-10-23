@@ -260,7 +260,7 @@ function fitStage() {
   const tall = Math.max(1, rect.height);
   const introBox = document.querySelector(".intro")?.getBoundingClientRect();
   const dockBox = document.querySelector(".dock")?.getBoundingClientRect();
-  if (document.body.classList.contains("night") && introBox && dockBox) {
+  if (introBox && dockBox) {
     diorama.setChrome(Math.max(0, introBox.bottom - rect.top), Math.max(0, rect.bottom - dockBox.top));
   } else {
     diorama.setChrome(0, 0);
@@ -268,7 +268,7 @@ function fitStage() {
   view.style.transform = "";
   if (stageEl.classList.contains("flat")) {
     let side = Math.floor(Math.min(wide, tall));
-    if (document.body.classList.contains("night") && introBox && dockBox) {
+    if (introBox && dockBox) {
       const top = Math.max(0, introBox.bottom - rect.top);
       const bottom = Math.max(0, rect.bottom - dockBox.top);
       const gap = Math.max(1, tall - top - bottom);

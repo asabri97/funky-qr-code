@@ -8,9 +8,9 @@ export type RGB = [number, number, number];
 export type Theme = "day" | "night";
 
 const PATH: RGB[] = [
-  [236, 226, 208],
-  [223, 210, 188],
-  [245, 237, 224],
+  [247, 241, 232],
+  [232, 213, 183],
+  [255, 253, 248],
 ];
 
 const TRUNK: RGB[] = [
@@ -204,20 +204,31 @@ export function writeArtColor(
     return;
   }
   if (kind === "grass" || kind === "finder") {
-    const light = shade > 0;
-    out[0] = light ? 214 : 196;
-    out[1] = light ? 208 : 190;
-    out[2] = light ? 196 : 178;
+    if (shade > 0.55) {
+      out[0] = 221;
+      out[1] = 185;
+      out[2] = 109;
+    } else {
+      out[0] = shade > 0 ? 255 : 243;
+      out[1] = shade > 0 ? 253 : 236;
+      out[2] = shade > 0 ? 248 : 220;
+    }
     vary(out, shade, 6);
     return;
   }
   if (kind === "skirt") {
-    const base: RGB = shade > 0.35 ? [186, 208, 92] : shade > -0.15 ? [78, 156, 58] : [46, 112, 42];
-    out[0] = base[0];
-    out[1] = base[1];
-    out[2] = base[2];
-    if (season === "winter") mixToward(out, [220, 226, 222], 0.7);
-    vary(out, shade, 12);
+    if (shade > 0.2 && season !== "winter") {
+      writeHex(season === "spring" ? "#ef96af" : tint, out);
+      mixToward(out, [255, 250, 252], 0.28);
+    } else {
+      const base: RGB = shade > 0.15 ? [111, 140, 86] : [78, 122, 64];
+      out[0] = base[0];
+      out[1] = base[1];
+      out[2] = base[2];
+    }
+    if (season === "winter") mixToward(out, [232, 238, 236], 0.72);
+    if (season === "autumn" && shade <= 0.42) mixToward(out, [196, 122, 58], 0.45);
+    vary(out, shade, 10);
     return;
   }
 
