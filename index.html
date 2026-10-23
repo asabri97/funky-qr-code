@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canopy — a tree that becomes a QR code</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Outfit:wght@380;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <article class="card">
+        <header class="intro">
+          <h1>Canopy</h1>
+          <p class="lede">The plaza turns on its own. Scroll down and it lies flat as a QR code.</p>
+        </header>
+        <div id="stage" class="stage">
+          <canvas id="view" tabindex="0" role="button" aria-label="Toggle between the tree and the QR code"></canvas>
+          <p id="empty" class="empty" hidden>Add a link and the tree will grow.</p>
+        </div>
+        <button id="hint" class="hint" type="button">Scroll down for the code</button>
+        <div class="link-row">
+          <label class="sr" for="link">Link to encode</label>
+          <input
+            id="link"
+            type="text"
+            inputmode="url"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="https://example.com"
+            value="https://example.com"
+          />
+          <button id="download" class="icon-button" type="button" aria-label="Download QR code">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4v10" />
+              <path d="M7.5 10.5 12 15l4.5-4.5" />
+              <path d="M5 19h14" />
+            </svg>
+          </button>
+        </div>
+        <div class="seasons" role="group" aria-label="Season">
+          <button class="on" type="button" data-season="spring" aria-pressed="true">Spring</button>
+          <button type="button" data-season="summer" aria-pressed="false">Summer</button>
+          <button type="button" data-season="autumn" aria-pressed="false">Autumn</button>
+          <button type="button" data-season="winter" aria-pressed="false">Winter</button>
+        </div>
+        <div class="tints" role="group" aria-label="Canopy color">
+          <button class="on" type="button" data-tint="#e989a8" style="--dot: #e989a8" aria-label="Pink" aria-pressed="true"></button>
+          <button type="button" data-tint="#d24b4b" style="--dot: #d24b4b" aria-label="Red" aria-pressed="false"></button>
+          <button type="button" data-tint="#7d6bb5" style="--dot: #7d6bb5" aria-label="Purple" aria-pressed="false"></button>
+          <button type="button" data-tint="#e39b3a" style="--dot: #e39b3a" aria-label="Amber" aria-pressed="false"></button>
+          <button type="button" data-tint="#3c7fd4" style="--dot: #3c7fd4" aria-label="Blue" aria-pressed="false"></button>
+          <button type="button" data-tint="#5f9a55" style="--dot: #5f9a55" aria-label="Green" aria-pressed="false"></button>
+        </div>
+        <p id="status" class="status" hidden></p>
+      </article>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,240 @@
+:root {
+  color-scheme: dark;
+  --ink: #1d1712;
+  --muted: #6f645b;
+  --card: #f6f1e7;
+  --stage: #f3eee4;
+  --line: #e4d8c8;
+  --accent: #8d4b32;
+  font-family: Outfit, "Avenir Next", sans-serif;
+  background: #12100e;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(255, 236, 214, 0.08), transparent 60%),
+    #12100e;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+}
+
+.card {
+  width: min(440px, 100%);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 28px;
+  padding: 22px 18px 18px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
+}
+
+.intro h1 {
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 2.6rem;
+  font-weight: 560;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+}
+
+.lede {
+  margin: 10px 0 0;
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.stage {
+  position: relative;
+  margin-top: 16px;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--stage);
+  cursor: pointer;
+  touch-action: none;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+canvas:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.empty[hidden] {
+  display: none;
+}
+
+.hint {
+  display: block;
+  margin: 10px auto 0;
+  border: 0;
+  border-radius: 999px;
+  background: #efe6d8;
+  color: #6d6258;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: #fffaf3;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 11px 12px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #c9a189;
+}
+
+.icon-button {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fffaf4;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.seasons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.seasons button {
+  border: 0;
+  background: #efe6d8;
+  color: #6e6258;
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.seasons button.on {
+  background: #2a211b;
+  color: #f6f1e7;
+}
+
+.tints {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tints button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, var(--dot) 0 7px, transparent 8px);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tints button.on {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #2a211b;
+}
+
+.status {
+  min-height: 1.2em;
+  margin: 12px 0 0;
+  text-align: center;
+  color: #9a4a38;
+  font-size: 0.85rem;
+}
+
+.status[hidden] {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .intro h1 {
+    font-size: 2.2rem;
+  }
+
+  .seasons button {
+    font-size: 0.78rem;
+  }
+}

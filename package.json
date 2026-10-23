@@ -1,0 +1,23 @@
+{
+  "name": "funky-qr-code",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "@types/three": "^0.170.0",
+    "jsqr": "^1.4.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.6",
+    "vitest": "^3.0.4"
+  }
+}
