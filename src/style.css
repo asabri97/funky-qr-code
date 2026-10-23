@@ -44,6 +44,13 @@ input {
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .intro h1 {
   margin: 0;
   font-family: Fraunces, Georgia, serif;
@@ -51,6 +58,29 @@ input {
   font-weight: 560;
   letter-spacing: -0.045em;
   line-height: 0.9;
+}
+
+.modes {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #efe6d8;
+}
+
+.modes button {
+  border: 0;
+  background: transparent;
+  color: #6e6258;
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.modes button.on {
+  background: #2a211b;
+  color: #f6f1e7;
 }
 
 .lede {
@@ -70,6 +100,10 @@ input {
   background: var(--stage);
   cursor: pointer;
   touch-action: none;
+}
+
+.stage.dropping {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 canvas {
@@ -217,6 +251,31 @@ input:focus {
   box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #2a211b;
 }
 
+.picture-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.picture-row label,
+.picture-row button {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: #efe6d8;
+  color: #6e6258;
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.picture-row button[hidden] {
+  display: none;
+}
+
 .status {
   min-height: 1.2em;
   margin: 12px 0 0;
@@ -227,6 +286,58 @@ input:focus {
 
 .status[hidden] {
   display: none;
+}
+
+body.night {
+  --ink: #e7eefc;
+  --muted: #a9b4d0;
+  --card: #141b2b;
+  --stage: #070b16;
+  --line: #2c3854;
+  --accent: #e0b15a;
+  background:
+    radial-gradient(1px 1px at 14% 22%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1.5px 1.5px at 78% 18%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 64% 74%, rgba(190, 210, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 28% 68%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 88% 58%, rgba(255, 220, 160, 0.45), transparent),
+    #05070e;
+}
+
+body.night .modes,
+body.night .hint,
+body.night .seasons button {
+  background: #222a3e;
+  color: #c5d0ea;
+}
+
+body.night .modes button {
+  color: #d5d8de;
+}
+
+body.night .modes button.on,
+body.night .seasons button.on {
+  background: #f4f7ff;
+  color: #141b2b;
+}
+
+body.night input {
+  background: #0e1422;
+  color: var(--ink);
+}
+
+body.night .tints button.on {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #d7e2ff;
+}
+
+body.night .nature {
+  display: none;
+}
+
+body.night .picture-row label,
+body.night .picture-row button {
+  background: #222a3e;
+  color: #c5d0ea;
 }
 
 @media (max-width: 420px) {

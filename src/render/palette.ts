@@ -5,6 +5,7 @@ export type { Season } from "./seasons";
 export { SEASON_TINT, TINTS } from "./seasons";
 
 export type RGB = [number, number, number];
+export type Theme = "day" | "night";
 
 const PATH: RGB[] = [
   [236, 226, 208],
@@ -37,8 +38,15 @@ export function writeHex(hex: string, out: RGB) {
 }
 
 const LAWN: RGB = [28, 122, 54];
+const NIGHT_FIELD: RGB = [8, 12, 22];
+const NIGHT_FINDER: RGB = [150, 225, 255];
+const NIGHT_GLOW: RGB = [214, 246, 255];
 
-export function writeFlatColor(kind: Kind, dark: boolean, tint: string, out: RGB) {
+export function writeFlatColor(kind: Kind, dark: boolean, tint: string, out: RGB, theme: Theme = "day") {
+  if (theme === "night") {
+    writeNightFlat(kind, dark, out);
+    return;
+  }
   if (!dark || kind === "path") {
     out[0] = 255;
     out[1] = 255;
@@ -53,6 +61,19 @@ export function writeFlatColor(kind: Kind, dark: boolean, tint: string, out: RGB
   }
   writeHex(tint, out);
   darkenTo(out, 0.2);
+}
+
+function writeNightFlat(kind: Kind, dark: boolean, out: RGB) {
+  if (!dark || kind === "path") {
+    out[0] = NIGHT_FIELD[0];
+    out[1] = NIGHT_FIELD[1];
+    out[2] = NIGHT_FIELD[2];
+    return;
+  }
+  const ink = kind === "canopy" || kind === "trunk" ? NIGHT_GLOW : NIGHT_FINDER;
+  out[0] = ink[0];
+  out[1] = ink[1];
+  out[2] = ink[2];
 }
 
 function darkenTo(out: RGB, maxLum: number) {
@@ -97,7 +118,60 @@ function clampChannel(channel: number) {
   return Math.min(255, Math.max(0, channel));
 }
 
-export function writeArtColor(kind: Kind, season: Season, tint: string, shade: number, layer: number, out: RGB) {
+function writeNightArt(kind: Kind, shade: number, layer: number, out: RGB) {
+  if (kind === "skirt") {
+    const icy = shade > 0.45;
+    const base: RGB = icy ? [168, 186, 198] : shade > 0 ? [132, 122, 108] : [78, 74, 70];
+    out[0] = base[0];
+    out[1] = base[1];
+    out[2] = base[2];
+    vary(out, shade, 10);
+    return;
+  }
+  if (kind === "canopy") {
+    out[0] = 86;
+    out[1] = 74;
+    out[2] = 150;
+    vary(out, shade, 12);
+    return;
+  }
+  if (kind === "trunk") {
+    const band = Math.abs(layer) % 2 === 0;
+    out[0] = band ? 255 : 232;
+    out[1] = band ? 196 : 150;
+    out[2] = band ? 90 : 64;
+    return;
+  }
+  const deck: RGB[] = [
+    [24, 30, 48],
+    [32, 40, 62],
+    [18, 22, 36],
+  ];
+  const base = deck[Math.abs(Math.round(shade * 2)) % deck.length];
+  out[0] = base[0];
+  out[1] = base[1];
+  out[2] = base[2];
+  if (kind === "finder") {
+    out[0] += 8;
+    out[1] += 10;
+    out[2] += 16;
+  }
+  vary(out, shade, 6);
+}
+
+export function writeArtColor(
+  kind: Kind,
+  season: Season,
+  tint: string,
+  shade: number,
+  layer: number,
+  out: RGB,
+  theme: Theme = "day",
+) {
+  if (theme === "night") {
+    writeNightArt(kind, shade, layer, out);
+    return;
+  }
   if (kind === "path") {
     const base = PATH[Math.abs(Math.round(shade * 2)) % PATH.length];
     out[0] = base[0];
@@ -158,13 +232,14 @@ export function writeBlockColor(
   layer: number,
   contrast: number,
   out: RGB,
+  theme: Theme = "day",
 ) {
   if (contrast >= 1) {
-    writeFlatColor(kind, dark, tint, out);
+    writeFlatColor(kind, dark, tint, out, theme);
     return;
   }
-  writeArtColor(kind, season, tint, shade, layer, out);
+  writeArtColor(kind, season, tint, shade, layer, out, theme);
   if (contrast <= 0) return;
-  writeFlatColor(kind, dark, tint, scratch);
+  writeFlatColor(kind, dark, tint, scratch, theme);
   mixToward(out, scratch, contrast);
 }

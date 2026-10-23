@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { buildScene, canopyRadius, type Block, type BuildResult, type Kind, type SceneModel } from "../qr/scene";
-import { SEASON_TINT, writeBlockColor, type RGB, type Season } from "./palette";
+import { SEASON_TINT, writeBlockColor, type RGB, type Season, type Theme } from "./palette";
+import type { Hologram, PortraitCell } from "./portrait";
 
 const KINDS: Kind[] = ["path", "grass", "finder", "skirt", "trunk", "canopy"];
 const PETALS = 72;
@@ -12,6 +13,8 @@ type Bucket = {
 };
 
 type Petal = { x: number; y: number; z: number; speed: number; drift: number; phase: number };
+
+type Orbit = { pivot: THREE.Object3D; speed: number; phase: number };
 
 export class Diorama {
   readonly renderer: THREE.WebGLRenderer;
@@ -39,6 +42,18 @@ export class Diorama {
   private readonly trunk: THREE.Mesh;
   private readonly blossoms: THREE.InstancedMesh;
   private readonly blossomMat: THREE.MeshBasicMaterial;
+  private readonly system = new THREE.Group();
+  private readonly orbits: Orbit[] = [];
+  private readonly stars: THREE.Points;
+  private sun!: THREE.Mesh;
+  private sunGlow!: THREE.Sprite;
+  private moonPivot: THREE.Group | null = null;
+  private portrait: THREE.InstancedMesh | null = null;
+  private hologram: THREE.Group | null = null;
+  private hologramUniforms: { uTime: { value: number }; uOpacity: { value: number } } | null = null;
+  private portraitHeight = 0;
+  private theme: Theme = "day";
+  private readonly nightSky = new THREE.Color(0x070b16);
   private model: SceneModel | null = null;
   private season: Season = "spring";
   private tint = SEASON_TINT.spring;
@@ -128,6 +143,10 @@ export class Diorama {
     this.blossoms.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.blossoms.renderOrder = 2;
     this.turntable.add(this.blossoms);
+    this.buildSystem();
+    this.stars = starField();
+    this.stars.visible = false;
+    this.scene.add(this.stars);
 
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointermove", this.onPointerMove);
@@ -138,6 +157,14 @@ export class Diorama {
 
   get hasModel() {
     return this.model !== null;
+  }
+
+  get isFlat() {
+    return this.reportedFlat;
+  }
+
+  get hasPortrait() {
+    return this.portrait !== null || this.hologram !== null;
   }
 
   setText(text: string): BuildResult {
@@ -168,6 +195,54 @@ export class Diorama {
     this.tint = hex;
     this.blossomMat.color.set(hex);
     this.paintDirty = true;
+  }
+
+  setTheme(theme: Theme) {
+    if (this.theme === theme) return;
+    this.theme = theme;
+    (this.platform.material as THREE.MeshBasicMaterial).color.set(theme === "night" ? 0x141a28 : 0xe7dcc8);
+    (this.shadow.material as THREE.MeshBasicMaterial).color.set(theme === "night" ? 0x9eb4d8 : 0xffffff);
+    this.paintDirty = true;
+    this.viewDirty = true;
+    this.scatterPetals(false);
+  }
+
+  setPortrait(cells: PortraitCell[] | null, wire: Hologram | null = null) {
+    if (this.portrait) {
+      this.turntable.remove(this.portrait);
+      const material = this.portrait.material;
+      if (!Array.isArray(material)) material.dispose();
+      this.portrait = null;
+      this.portraitHeight = 0;
+    }
+    this.clearHologram();
+    if (cells && cells.length > 0) {
+      const mesh = new THREE.InstancedMesh(this.cube, new THREE.MeshBasicMaterial({ vertexColors: true }), cells.length);
+      mesh.frustumCulled = false;
+      let top = 0;
+      cells.forEach((cell, index) => {
+        this.dummy.position.set(cell.x, cell.y, cell.z);
+        this.dummy.scale.set(cell.size, cell.size, cell.size);
+        this.dummy.rotation.set(0, 0, 0);
+        this.dummy.updateMatrix();
+        mesh.setMatrixAt(index, this.dummy.matrix);
+        this.color.setRGB(cell.color[0] / 255, cell.color[1] / 255, cell.color[2] / 255, THREE.SRGBColorSpace);
+        mesh.setColorAt(index, this.color);
+        top = Math.max(top, cell.y + cell.size / 2);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      this.turntable.add(mesh);
+      this.portrait = mesh;
+      this.portraitHeight = top;
+    }
+    if (wire && wire.positions.length > 0) {
+      this.hologram = this.buildHologram(wire);
+      this.scene.add(this.hologram);
+      this.portraitHeight = Math.max(this.portraitHeight, wire.height);
+    }
+    this.paintDirty = true;
+    this.viewDirty = true;
   }
 
   setFlat(flat: boolean) {
@@ -206,7 +281,7 @@ export class Diorama {
     if (!url) return;
     const link = document.createElement("a");
     link.href = url;
-    link.download = "canopy-qr.png";
+    link.download = "orbit-qr.png";
     link.click();
   }
 
@@ -262,6 +337,10 @@ export class Diorama {
       this.petals.visible = false;
       this.wood.visible = false;
       this.blossoms.visible = false;
+      this.system.visible = false;
+      this.stars.visible = false;
+      if (this.portrait) this.portrait.visible = false;
+      if (this.hologram) this.hologram.visible = false;
       return;
     }
 
@@ -276,6 +355,7 @@ export class Diorama {
     }
 
     const span = this.model.grid + 3.2;
+    this.system.scale.setScalar(clamp(this.model.grid / 36, 0.78, 1.2));
     this.platform.scale.set(span, 1, span);
     this.shadow.scale.set(span * 1.12, span * 1.12, 1);
     this.growWood(canopyRadius(this.model.modules));
@@ -287,6 +367,7 @@ export class Diorama {
     const now = performance.now();
     const dt = Math.min(0.05, this.clock.getDelta());
     this.spinBase(dt);
+    this.spinSystem(dt);
     this.turntable.rotation.y = this.yaw;
     if (this.animating) {
       const u = this.animMs === 0 ? 1 : Math.min(1, (now - this.animStart) / this.animMs);
@@ -309,6 +390,7 @@ export class Diorama {
       this.updateBackdrop(this.eased);
       this.paintDirty = false;
     }
+    this.paintHologram();
     this.paintPetals(dt, this.eased);
     this.canvas.style.imageRendering = this.eased >= 1 ? "pixelated" : "";
     this.renderer.render(this.scene, this.active);
@@ -335,8 +417,9 @@ export class Diorama {
           ySize = 0.16;
           y = 0.08;
         } else if (block.kind === "skirt") {
-          xz = 0.28 * fade;
-          ySize = block.height * 0.95;
+          const rock = this.theme === "night";
+          xz = (rock ? 0.62 : 0.46) * fade;
+          ySize = block.height * (rock ? 0.4 : 0.78);
           y = ySize / 2;
         } else if (block.kind === "canopy") {
           xz = block.cap ? unit * flatten : 0;
@@ -365,6 +448,7 @@ export class Diorama {
           block.layer,
           block.structural ? contrast : 0,
           this.rgb,
+          this.theme,
         );
         this.color.setRGB(this.rgb[0] / 255, this.rgb[1] / 255, this.rgb[2] / 255, THREE.SRGBColorSpace);
         bucket.mesh.setColorAt(index, this.color);
@@ -376,7 +460,9 @@ export class Diorama {
 
   private updateBackdrop(t: number) {
     const fade = smoothstep(0.5, 1, t);
-    this.background.copy(this.cream).lerp(this.white, fade);
+    const sky = this.theme === "night" ? this.nightSky : this.cream;
+    const flat = this.theme === "night" ? this.nightSky : this.white;
+    this.background.copy(sky).lerp(flat, fade);
     this.renderer.setClearColor(this.background, 1);
     const alive = this.model !== null;
     this.platform.visible = alive && t < 1;
@@ -389,17 +475,29 @@ export class Diorama {
     const grid = this.model?.grid ?? 21;
     const radius = grid * 0.32;
     const fade = 1 - smoothstep(0.02, 0.4, t);
-    this.color.set(petalHex(this.season, this.tint));
+    if (this.portrait || this.hologram) {
+      this.petals.visible = false;
+      return;
+    }
+    const night = this.theme === "night";
+    this.color.set(night ? "#e7eeff" : petalHex(this.season, this.tint));
     (this.petals.material as THREE.MeshBasicMaterial).color.copy(this.color);
     const time = this.clock.elapsedTime;
     const winter = this.season === "winter";
     this.petalState.forEach((petal, index) => {
-      petal.y -= petal.speed * dt;
-      petal.x += Math.sin(time * petal.drift + petal.phase) * dt * 0.18;
-      if (petal.y < 0.2) this.resetPetal(petal, radius, true);
-      const size = (winter ? 0.55 : 1) * fade;
+      if (night) {
+        petal.x += Math.cos(petal.phase) * petal.drift * dt * 0.22;
+        petal.z += Math.sin(petal.phase) * petal.drift * dt * 0.22;
+        petal.y += Math.sin(time * 0.4 + petal.phase) * dt * 0.12;
+        if (Math.hypot(petal.x, petal.z) > radius * 1.35 || petal.y > 22 || petal.y < 0.4) this.resetPetal(petal, radius, true);
+      } else {
+        petal.y -= petal.speed * dt;
+        petal.x += Math.sin(time * petal.drift + petal.phase) * dt * 0.18;
+        if (petal.y < 0.2) this.resetPetal(petal, radius, true);
+      }
+      const size = (night ? 0.28 : winter ? 0.55 : 1) * fade;
       this.dummy.position.set(petal.x, petal.y, petal.z);
-      this.dummy.scale.set(size, winter ? size : size * 0.7, size);
+      this.dummy.scale.set(size, night || winter ? size : size * 0.7, size);
       this.dummy.rotation.set(time * 0.4, petal.phase + time * petal.drift, 0);
       this.dummy.updateMatrix();
       this.petals.setMatrixAt(index, this.dummy.matrix);
@@ -418,7 +516,8 @@ export class Diorama {
     const dist = Math.sqrt(Math.random()) * radius;
     petal.x = Math.cos(angle) * dist;
     petal.z = Math.sin(angle) * dist;
-    petal.y = fromTop ? 16 + Math.random() * 3 : 0.4 + Math.random() * 10;
+    const night = this.theme === "night";
+    petal.y = night ? 1.5 + Math.random() * 12 : fromTop ? 16 + Math.random() * 3 : 0.4 + Math.random() * 10;
     const winter = this.season === "winter";
     petal.speed = (winter ? 0.22 : 0.38) + Math.random() * (winter ? 0.28 : 0.55);
     petal.drift = 0.5 + Math.random() * 1.5;
@@ -446,9 +545,11 @@ export class Diorama {
     const az = lerp(this.orbitAz, 0, smoothstep(0.15, 0.92, t));
     const el = lerp(this.orbitEl, Math.PI / 2 - 0.012, t);
     const fov = lerp(30, 7, t);
-    const halfWant = lerp(grid * 0.64, grid * 0.5, t);
+    const framed = this.portraitHeight > 0 ? 0.72 : 0.64;
+    const halfWant = lerp(grid * framed, grid * 0.5, t);
     const dist = halfWant / Math.tan((fov * Math.PI) / 360);
-    const lookY = lerp(8, 0, t);
+    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : 8;
+    const lookY = lerp(pose, 0, t);
     this.persp.fov = fov;
     this.persp.aspect = this.canvas.width / Math.max(1, this.canvas.height);
     this.persp.near = 0.08;
@@ -571,11 +672,163 @@ export class Diorama {
     if (this.blossoms.instanceColor) this.blossoms.instanceColor.needsUpdate = true;
   }
 
+  private buildSystem() {
+    this.turntable.add(this.system);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffc14a });
+    this.sun = new THREE.Mesh(new THREE.SphereGeometry(1.45, 28, 18), sunMat);
+    this.sun.position.y = 3.2;
+    this.system.add(this.sun);
+    this.sunGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture(),
+        color: 0xffd27a,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    this.sunGlow.position.y = 3.2;
+    this.sunGlow.scale.set(7.4, 7.4, 1);
+    this.sunGlow.userData.baseOpacity = 0.9;
+    this.system.add(this.sunGlow);
+
+    const bodies: { name: string; radius: number; size: number; color: number; speed: number; tilt: number; map?: THREE.Texture; ring?: boolean }[] = [
+      { name: "mercury", radius: 4.5, size: 0.42, color: 0xc4b8a8, speed: 0.62, tilt: 0.08 },
+      { name: "venus", radius: 6.3, size: 0.62, color: 0xe7c98a, speed: 0.4, tilt: -0.06 },
+      { name: "earth", radius: 8.4, size: 0.7, color: 0x3f86d6, speed: 0.28, tilt: 0.18, map: earthTexture() },
+      { name: "mars", radius: 10.6, size: 0.52, color: 0xc2654a, speed: 0.2, tilt: 0.05 },
+      { name: "jupiter", radius: 13.2, size: 1.15, color: 0xd8b48a, speed: 0.12, tilt: -0.1, map: jupiterTexture() },
+      { name: "saturn", radius: 16.2, size: 0.96, color: 0xe6d2a4, speed: 0.08, tilt: 0.22, ring: true },
+    ];
+    for (const body of bodies) {
+      const pivot = new THREE.Group();
+      pivot.position.y = 3.2;
+      pivot.rotation.x = body.tilt;
+      const planet = new THREE.Mesh(
+        new THREE.SphereGeometry(body.size, 24, 16),
+        new THREE.MeshBasicMaterial({ color: body.color, map: body.map }),
+      );
+      planet.position.x = body.radius;
+      pivot.add(planet);
+      if (body.name === "earth") {
+        this.moonPivot = new THREE.Group();
+        this.moonPivot.position.x = body.radius;
+        const moon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), new THREE.MeshBasicMaterial({ color: 0xd9dde6 }));
+        moon.position.set(1.35, 0.25, 0);
+        this.moonPivot.add(moon);
+        pivot.add(this.moonPivot);
+      }
+      if (body.ring) {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(body.size * 1.4, body.size * 2.15, 48),
+          new THREE.MeshBasicMaterial({ color: 0xf0e2bf, side: THREE.DoubleSide, transparent: true, opacity: 0.82 }),
+        );
+        ring.rotation.x = Math.PI / 2.35;
+        ring.userData.baseOpacity = 0.82;
+        planet.add(ring);
+      }
+      const path = new THREE.Mesh(
+        new THREE.RingGeometry(body.radius - 0.045, body.radius + 0.045, 96),
+        new THREE.MeshBasicMaterial({ color: 0x9aafd4, side: THREE.DoubleSide, transparent: true, opacity: 0.28, depthWrite: false }),
+      );
+      path.rotation.x = -Math.PI / 2;
+      path.userData.baseOpacity = 0.28;
+      pivot.add(path);
+      this.system.add(pivot);
+      this.orbits.push({ pivot, speed: body.speed, phase: body.radius });
+    }
+    this.system.visible = false;
+  }
+
+  private fadeSystem(show: number) {
+    this.system.traverse((obj) => {
+      const mat = (obj as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      if (!mat || Array.isArray(mat) || !("opacity" in mat)) return;
+      const basic = mat as THREE.MeshBasicMaterial;
+      if (obj.userData.baseOpacity === undefined) obj.userData.baseOpacity = basic.opacity;
+      basic.transparent = true;
+      basic.opacity = (obj.userData.baseOpacity as number) * show;
+    });
+  }
+
+  private spinSystem(dt: number) {
+    if (this.theme !== "night" || !this.model) return;
+    const time = this.clock.elapsedTime;
+    for (const orbit of this.orbits) orbit.pivot.rotation.y = orbit.phase + time * orbit.speed;
+    if (this.moonPivot) this.moonPivot.rotation.y = time * 1.8;
+    const pulse = 1 + Math.sin(time * 1.7) * 0.045;
+    this.sun.scale.setScalar(pulse);
+    this.sunGlow.scale.set(7.4 * pulse, 7.4 * pulse, 1);
+    this.stars.rotation.y += dt * 0.02;
+  }
+
+  private clearHologram() {
+    if (!this.hologram) return;
+    this.scene.remove(this.hologram);
+    this.hologram.traverse((obj) => {
+      const mesh = obj as THREE.Points;
+      mesh.geometry?.dispose();
+      const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (material && !Array.isArray(material)) material.dispose();
+    });
+    this.hologram = null;
+    this.hologramUniforms = null;
+  }
+
+  private buildHologram(wire: Hologram) {
+    const uniforms = { uTime: { value: 0 }, uOpacity: { value: 1 } };
+    this.hologramUniforms = uniforms;
+    const group = new THREE.Group();
+    const pointGeo = new THREE.BufferGeometry();
+    pointGeo.setAttribute("position", new THREE.BufferAttribute(wire.positions, 3));
+    pointGeo.setAttribute("along", new THREE.BufferAttribute(wire.along, 1));
+    pointGeo.setAttribute("bright", new THREE.BufferAttribute(wire.bright, 1));
+    const points = new THREE.Points(pointGeo, hologramMaterial(uniforms, true));
+    points.frustumCulled = false;
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute("position", new THREE.BufferAttribute(wire.positions.slice(), 3));
+    lineGeo.setAttribute("along", new THREE.BufferAttribute(wire.along.slice(), 1));
+    lineGeo.setAttribute("bright", new THREE.BufferAttribute(wire.bright.slice(), 1));
+    lineGeo.setIndex(new THREE.BufferAttribute(wire.lines, 1));
+    const lines = new THREE.LineSegments(lineGeo, hologramMaterial(uniforms, false));
+    lines.frustumCulled = false;
+    group.add(lines, points);
+    group.visible = false;
+    return group;
+  }
+
+  private paintHologram() {
+    if (!this.hologram || !this.hologramUniforms) return;
+    const show = 1 - smoothstep(0.04, 0.62, this.eased);
+    const visible = this.theme === "night" && this.model !== null && show > 0.02;
+    this.hologram.visible = visible;
+    this.hologramUniforms.uTime.value = this.clock.elapsedTime;
+    this.hologramUniforms.uOpacity.value = show;
+    if (!visible) return;
+    this.hologram.rotation.y = Math.atan2(this.persp.position.x, this.persp.position.z);
+  }
+
   private paintFoliage(t: number) {
     const show = 1 - smoothstep(0.04, 0.62, t);
     const visible = this.model !== null && show > 0.02;
-    this.wood.visible = visible;
-    this.blossoms.visible = visible;
+    const night = this.theme === "night";
+    const posed = this.portrait !== null || this.hologram !== null;
+    const hologramOn = night && this.hologram !== null;
+    this.wood.visible = !night && visible && !posed;
+    this.blossoms.visible = !night && visible && !posed;
+    this.system.visible = night && visible && !posed;
+    this.stars.visible = night && this.model !== null && t < 0.8;
+    if (this.portrait) {
+      const material = this.portrait.material as THREE.MeshBasicMaterial;
+      material.transparent = show < 0.98;
+      material.opacity = show;
+      material.depthWrite = show > 0.9;
+      this.portrait.visible = visible && !hologramOn;
+    }
+    if (this.hologram) this.hologram.visible = hologramOn && visible;
+    (this.stars.material as THREE.PointsMaterial).opacity = show;
+    this.fadeSystem(show);
     this.woodMat.opacity = show;
     this.woodMat.transparent = show < 0.98;
     const trunkMat = this.trunk.material as THREE.MeshBasicMaterial;
@@ -688,6 +941,87 @@ function blossomTexture() {
   return texture;
 }
 
+function glowTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (!context) return texture;
+  const gradient = context.createRadialGradient(64, 64, 4, 64, 64, 62);
+  gradient.addColorStop(0, "rgba(255, 244, 210, 0.95)");
+  gradient.addColorStop(0.28, "rgba(255, 186, 72, 0.45)");
+  gradient.addColorStop(1, "rgba(255, 160, 40, 0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function earthTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 32;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (!context) return texture;
+  context.fillStyle = "#2f78c8";
+  context.fillRect(0, 0, 64, 32);
+  context.fillStyle = "#3e9a55";
+  context.beginPath();
+  context.ellipse(16, 14, 8, 5, 0.4, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.ellipse(40, 18, 7, 4, -0.3, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#eaf4ff";
+  context.fillRect(0, 0, 64, 3);
+  context.fillRect(0, 29, 64, 3);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function jupiterTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 32;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (!context) return texture;
+  const bands = ["#e6d2ae", "#c8966a", "#f3e6c8", "#b98458", "#edd7b0", "#d7a36a"];
+  bands.forEach((band, index) => {
+    context.fillStyle = band;
+    context.fillRect(0, index * 5, 64, 6);
+  });
+  context.fillStyle = "#c45a4a";
+  context.beginPath();
+  context.ellipse(40, 20, 6, 4, 0, 0, Math.PI * 2);
+  context.fill();
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function starField() {
+  const count = 380;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const reach = 16 + Math.random() * 48;
+    const angle = Math.random() * Math.PI * 2;
+    positions[i * 3] = Math.cos(angle) * reach;
+    positions[i * 3 + 1] = 2 + Math.random() * 42;
+    positions[i * 3 + 2] = Math.sin(angle) * reach * (0.55 + Math.random() * 0.7);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({ color: 0xe7eeff, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 1, depthWrite: false }),
+  );
+}
+
 function shadowTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
@@ -703,6 +1037,67 @@ function shadowTexture() {
   context.fillRect(0, 0, 128, 128);
   texture.needsUpdate = true;
   return texture;
+}
+
+const HOLO_VERT = `
+  attribute float along;
+  attribute float bright;
+  varying float vAlong;
+  varying float vBright;
+  uniform float uTime;
+  void main() {
+    vAlong = along;
+    vBright = bright;
+    vec3 p = position;
+    p.x += sin(uTime * 1.25 + position.y * 0.8) * 0.04;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = clamp(360.0 / max(1.0, -mv.z), 1.8, 6.0);
+  }
+`;
+
+const HOLO_POINT_FRAG = `
+  varying float vAlong;
+  varying float vBright;
+  uniform float uTime;
+  uniform float uOpacity;
+  void main() {
+    vec2 uv = gl_PointCoord - vec2(0.5);
+    float dist = length(uv);
+    if (dist > 0.5) discard;
+    float glow = smoothstep(0.5, 0.05, dist);
+    float band = fract(uTime * 0.2);
+    float scan = smoothstep(0.14, 0.0, abs(vAlong - band));
+    vec3 color = vec3(0.45, 0.88, 1.0) * (0.55 + vBright * 0.65 + scan * 0.9);
+    gl_FragColor = vec4(color, glow * uOpacity * (0.72 + scan));
+  }
+`;
+
+const HOLO_LINE_FRAG = `
+  varying float vAlong;
+  varying float vBright;
+  uniform float uTime;
+  uniform float uOpacity;
+  void main() {
+    float band = fract(uTime * 0.2);
+    float scan = smoothstep(0.16, 0.0, abs(vAlong - band));
+    vec3 color = vec3(0.45, 0.86, 1.0) * (0.7 + vBright * 0.4 + scan);
+    gl_FragColor = vec4(color, uOpacity * (0.85 + scan * 0.15));
+  }
+`;
+
+function hologramMaterial(
+  uniforms: { uTime: { value: number }; uOpacity: { value: number } },
+  points: boolean,
+) {
+  return new THREE.ShaderMaterial({
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: HOLO_VERT,
+    fragmentShader: points ? HOLO_POINT_FRAG : HOLO_LINE_FRAG,
+  });
 }
 
 function petalHex(season: Season, tint: string) {

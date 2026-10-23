@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Canopy — a tree that becomes a QR code</title>
+    <title>Orbit — a plaza that becomes a QR code</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,8 +16,14 @@
     <main class="page">
       <article class="card">
         <header class="intro">
-          <h1>Canopy</h1>
-          <p class="lede">The plaza turns on its own. Scroll down and it lies flat as a QR code.</p>
+          <div class="title-row">
+            <h1>Orbit</h1>
+            <div class="modes" role="group" aria-label="Scene">
+              <button class="on" type="button" data-theme="day" aria-pressed="true">Day</button>
+              <button type="button" data-theme="night" aria-pressed="false">Night</button>
+            </div>
+          </div>
+          <p id="lede" class="lede">The plaza turns on its own. Scroll down and it lies flat as a QR code.</p>
         </header>
         <div id="stage" class="stage">
           <canvas id="view" tabindex="0" role="button" aria-label="Toggle between the tree and the QR code"></canvas>
@@ -43,19 +49,24 @@
             </svg>
           </button>
         </div>
-        <div class="seasons" role="group" aria-label="Season">
+        <div class="seasons nature" role="group" aria-label="Season">
           <button class="on" type="button" data-season="spring" aria-pressed="true">Spring</button>
           <button type="button" data-season="summer" aria-pressed="false">Summer</button>
           <button type="button" data-season="autumn" aria-pressed="false">Autumn</button>
           <button type="button" data-season="winter" aria-pressed="false">Winter</button>
         </div>
-        <div class="tints" role="group" aria-label="Canopy color">
+        <div class="tints nature" role="group" aria-label="Blossom color">
           <button class="on" type="button" data-tint="#e989a8" style="--dot: #e989a8" aria-label="Pink" aria-pressed="true"></button>
           <button type="button" data-tint="#d24b4b" style="--dot: #d24b4b" aria-label="Red" aria-pressed="false"></button>
           <button type="button" data-tint="#7d6bb5" style="--dot: #7d6bb5" aria-label="Purple" aria-pressed="false"></button>
           <button type="button" data-tint="#e39b3a" style="--dot: #e39b3a" aria-label="Amber" aria-pressed="false"></button>
           <button type="button" data-tint="#3c7fd4" style="--dot: #3c7fd4" aria-label="Blue" aria-pressed="false"></button>
           <button type="button" data-tint="#5f9a55" style="--dot: #5f9a55" aria-label="Green" aria-pressed="false"></button>
+        </div>
+        <div class="picture-row">
+          <label for="picture">Drop an image</label>
+          <input id="picture" class="sr" type="file" accept="image/*" />
+          <button id="clear-picture" type="button" hidden>Clear image</button>
         </div>
         <p id="status" class="status" hidden></p>
       </article>

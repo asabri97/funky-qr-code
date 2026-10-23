@@ -161,6 +161,13 @@ describe("buildScene", () => {
     }
     expect(blocks.some((block) => block.kind === "trunk" && block.structural)).toBe(true);
     expect(blocks.some((block) => !block.structural && block.kind === "canopy")).toBe(true);
+    const patches = blocks.filter((block) => {
+      if (block.kind !== "skirt" || block.cap) return false;
+      const ix = block.x + origin;
+      const iz = block.z + origin;
+      return ix > 3 && iz > 3 && ix < grid - 4 && iz < grid - 4;
+    });
+    expect(patches.length).toBeGreaterThan(30);
   });
 
   it("decodes the flat mosaic back to the link", () => {
