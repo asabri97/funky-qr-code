@@ -2,7 +2,7 @@
 
 A plaza that turns on its own. Scroll down and the same ground lies flat as a QR code.
 
-![The base turning from day into night](docs/day-night.gif)
+![Orbit, from the garden to the code and back](docs/demo.webp)
 
 Day is a cherry tree on stone, with grass around the edge. Night is a solar system: a sun, planets on their own orbits, and an asteroid rim. The base keeps rotating until you scroll or drag downward. That flat picture is a colored code for the link in the field, and a phone can scan it.
 
