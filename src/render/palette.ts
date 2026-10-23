@@ -120,43 +120,58 @@ function clampChannel(channel: number) {
 
 function writeNightArt(kind: Kind, shade: number, layer: number, out: RGB) {
   if (kind === "skirt") {
-    const icy = shade > 0.45;
-    const base: RGB = icy ? [168, 186, 198] : shade > 0 ? [132, 122, 108] : [78, 74, 70];
+    const base: RGB = shade > 0.2 ? [176, 164, 142] : [92, 98, 112];
     out[0] = base[0];
     out[1] = base[1];
     out[2] = base[2];
-    vary(out, shade, 10);
+    vary(out, shade, 8);
     return;
   }
   if (kind === "canopy") {
-    out[0] = 86;
-    out[1] = 74;
-    out[2] = 150;
-    vary(out, shade, 12);
+    out[0] = 232;
+    out[1] = 196;
+    out[2] = 120;
+    vary(out, shade, 14);
     return;
   }
   if (kind === "trunk") {
     const band = Math.abs(layer) % 2 === 0;
     out[0] = band ? 255 : 232;
-    out[1] = band ? 196 : 150;
-    out[2] = band ? 90 : 64;
+    out[1] = band ? 210 : 168;
+    out[2] = band ? 130 : 90;
     return;
   }
-  const deck: RGB[] = [
-    [24, 30, 48],
-    [32, 40, 62],
-    [18, 22, 36],
-  ];
-  const base = deck[Math.abs(Math.round(shade * 2)) % deck.length];
-  out[0] = base[0];
-  out[1] = base[1];
-  out[2] = base[2];
-  if (kind === "finder") {
-    out[0] += 8;
-    out[1] += 10;
-    out[2] += 16;
+  if (shade > 0.78) {
+    out[0] = 236;
+    out[1] = 228;
+    out[2] = 214;
+  } else if (shade > 0.45) {
+    out[0] = 206;
+    out[1] = 158;
+    out[2] = 86;
+  } else if (shade > 0.12) {
+    out[0] = 214;
+    out[1] = 186;
+    out[2] = 138;
+  } else if (shade > -0.08) {
+    out[0] = 20;
+    out[1] = 28;
+    out[2] = 46;
+  } else if (shade > -0.5) {
+    out[0] = 150;
+    out[1] = 158;
+    out[2] = 170;
+  } else {
+    out[0] = 176;
+    out[1] = 142;
+    out[2] = 78;
   }
-  vary(out, shade, 6);
+  if (kind === "finder") {
+    out[0] = clampChannel(out[0] + 10);
+    out[1] = clampChannel(out[1] + 8);
+    out[2] = clampChannel(out[2] + 4);
+  }
+  vary(out, shade, 8);
 }
 
 export function writeArtColor(

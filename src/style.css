@@ -54,6 +54,14 @@ input {
   margin-inline: auto;
 }
 
+.dock {
+  display: contents;
+}
+
+.mark {
+  display: none;
+}
+
 .title-row {
   display: flex;
   align-items: center;
@@ -91,14 +99,6 @@ input {
 .modes button.on {
   background: #2a211b;
   color: #f6f1e7;
-}
-
-.lede {
-  margin: 10px 0 0;
-  max-width: 34ch;
-  color: var(--muted);
-  font-size: 0.98rem;
-  line-height: 1.35;
 }
 
 .stage {
@@ -152,6 +152,7 @@ input:focus-visible {
 .hint {
   display: block;
   width: fit-content;
+  min-height: 32px;
   margin: 10px auto 0;
   border: 0;
   border-radius: 999px;
@@ -166,6 +167,24 @@ input:focus-visible {
   display: flex;
   gap: 8px;
   margin-top: 14px;
+}
+
+.field {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+}
+
+.field-icon {
+  display: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .sr {
@@ -205,6 +224,7 @@ input:focus {
   display: grid;
   place-items: center;
   cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .icon-button:disabled {
@@ -230,6 +250,10 @@ input:focus {
 }
 
 .seasons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   border: 0;
   background: #efe6d8;
   color: #6e6258;
@@ -237,6 +261,18 @@ input:focus {
   min-height: 40px;
   padding: 8px 0;
   cursor: pointer;
+}
+
+.seasons svg,
+.picture-row svg,
+.mark svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .seasons button.on {
@@ -274,8 +310,10 @@ input:focus {
 .picture-row label,
 .picture-row button {
   flex: 1;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 0;
   background: #efe6d8;
   color: #6e6258;
@@ -305,17 +343,11 @@ input:focus {
 body.night {
   --ink: #e7eefc;
   --muted: #a9b4d0;
-  --card: #141b2b;
-  --stage: #070b16;
-  --line: #2c3854;
+  --card: #050b18;
+  --stage: transparent;
+  --line: rgba(150, 186, 255, 0.35);
   --accent: #e0b15a;
-  background:
-    radial-gradient(1px 1px at 14% 22%, rgba(255, 255, 255, 0.75), transparent),
-    radial-gradient(1.5px 1.5px at 78% 18%, rgba(255, 255, 255, 0.55), transparent),
-    radial-gradient(1px 1px at 64% 74%, rgba(190, 210, 255, 0.7), transparent),
-    radial-gradient(1px 1px at 28% 68%, rgba(255, 255, 255, 0.4), transparent),
-    radial-gradient(1.5px 1.5px at 88% 58%, rgba(255, 220, 160, 0.45), transparent),
-    #05070e;
+  background: #050b18;
 }
 
 body.night .modes,
@@ -341,30 +373,270 @@ body.night input {
 }
 
 body.night .tints button.on {
-  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #d7e2ff;
+  box-shadow: 0 0 0 2px rgba(8, 16, 32, 0.9), 0 0 0 4px #d7e6ff;
+}
+
+body.night .card {
+  justify-content: space-between;
+  padding: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(42% 36% at 18% 42%, rgba(48, 92, 160, 0.28), transparent 70%),
+    radial-gradient(36% 30% at 78% 58%, rgba(24, 52, 96, 0.34), transparent 72%),
+    radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 22% 48%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 31% 18%, rgba(210, 226, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 46% 30%, rgba(255, 220, 170, 0.55), transparent),
+    radial-gradient(1.2px 1.2px at 63% 16%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 74% 38%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.3px 1.3px at 86% 24%, rgba(255, 214, 160, 0.6), transparent),
+    radial-gradient(1px 1px at 18% 72%, rgba(190, 214, 255, 0.55), transparent),
+    radial-gradient(1.2px 1.2px at 88% 78%, rgba(255, 255, 255, 0.5), transparent),
+    #050b18;
 }
 
 body.night .stage {
-  background:
-    radial-gradient(1.2px 1.2px at 12% 22%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1px 1px at 28% 68%, rgba(255, 255, 255, 0.55), transparent),
-    radial-gradient(1.4px 1.4px at 46% 34%, rgba(198, 220, 255, 0.75), transparent),
-    radial-gradient(1px 1px at 63% 78%, rgba(255, 255, 255, 0.45), transparent),
-    radial-gradient(1.2px 1.2px at 74% 18%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(1px 1px at 86% 52%, rgba(255, 214, 160, 0.55), transparent),
-    radial-gradient(1.3px 1.3px at 18% 84%, rgba(190, 210, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 54% 14%, rgba(255, 255, 255, 0.5), transparent),
-    #10182a;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  background: transparent;
 }
 
-body.night .nature {
-  display: none;
+body.night .intro,
+body.night .dock {
+  position: relative;
+  z-index: 2;
+}
+
+body.night .intro {
+  width: min(980px, calc(100% - 36px));
+  margin: 18px auto 0;
+  padding: 8px 16px;
+  border: 1px solid rgba(148, 186, 255, 0.28);
+  border-radius: 18px;
+  background: rgba(6, 14, 30, 0.42);
+  backdrop-filter: blur(16px);
+}
+
+body.night .mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  justify-self: start;
+  border-radius: 999px;
+  color: #d7e4ff;
+  background: rgba(8, 18, 36, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(160, 196, 255, 0.35);
+}
+
+body.night .mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+body.night .title-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+body.night .intro h1 {
+  position: relative;
+  justify-self: center;
+  color: #f7f4ee;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+}
+
+body.night .intro h1::before,
+body.night .intro h1::after {
+  content: "";
+  position: absolute;
+  top: 54%;
+  width: min(220px, 18vw);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(198, 214, 238, 0.7));
+}
+
+body.night .intro h1::before {
+  right: calc(100% + 22px);
+  transform: scaleX(-1);
+}
+
+body.night .intro h1::after {
+  left: calc(100% + 22px);
+}
+
+body.night .modes {
+  justify-self: end;
+  background: rgba(7, 14, 28, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(160, 190, 230, 0.18);
+}
+
+body.night .modes button.on {
+  background: rgba(8, 18, 40, 0.82);
+  color: #f3f7ff;
+  box-shadow: 0 0 0 1px #67b0ff, 0 0 14px rgba(70, 150, 255, 0.45);
+}
+
+body.night .dock {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: min(560px, calc(100% - 28px));
+  margin: 0 auto 18px;
+  padding: 14px;
+  border: 1px solid rgba(130, 176, 255, 0.22);
+  border-radius: 24px;
+  background: rgba(5, 12, 26, 0.38);
+  backdrop-filter: blur(18px);
+}
+
+body.night .hint,
+body.night .link-row,
+body.night .seasons,
+body.night .tints,
+body.night .picture-row,
+body.night .status {
+  width: 100%;
+  margin: 0;
+}
+
+body.night .hint {
+  align-self: center;
+  width: fit-content;
+  background: rgba(8, 16, 32, 0.55);
+  color: #d5e0f4;
+  box-shadow: inset 0 0 0 1px rgba(150, 186, 240, 0.2);
+}
+
+body.night .field {
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgba(6, 12, 24, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(90, 160, 255, 0.55), 0 0 16px rgba(50, 120, 255, 0.18);
+}
+
+body.night .field-icon {
+  display: block;
+  flex: none;
+  color: #9eb6de;
+}
+
+body.night .field input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-left: 0;
+}
+
+body.night .field input:focus {
+  box-shadow: none;
+}
+
+body.night .icon-button {
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f3ddb0, #d7a85a);
+  color: #3c2a10;
+  box-shadow: 0 0 16px rgba(214, 164, 72, 0.4);
+}
+
+body.night .icon-button:hover {
+  background: linear-gradient(180deg, #ffe7c0, #e0b56a);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(214, 164, 72, 0.5);
+}
+
+body.night .seasons {
+  gap: 0;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(7, 14, 28, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(160, 188, 230, 0.2);
+}
+
+body.night .seasons button {
+  background: transparent;
+  color: #d7e0f0;
+}
+
+body.night .seasons button.on {
+  background: rgba(8, 18, 40, 0.9);
+  color: #f5f8ff;
+  box-shadow: 0 0 0 1px #6eb6ff, 0 0 12px rgba(80, 160, 255, 0.38);
 }
 
 body.night .picture-row label,
 body.night .picture-row button {
-  background: #222a3e;
-  color: #c5d0ea;
+  width: 100%;
+  border-radius: 16px;
+  padding: 12px 16px;
+  background: rgba(6, 12, 24, 0.55);
+  color: #d5e2f8;
+  box-shadow: inset 0 0 0 1px rgba(110, 170, 255, 0.45), 0 0 14px rgba(50, 120, 255, 0.12);
+}
+
+@media (max-width: 760px) {
+  body.night .intro {
+    width: calc(100% - 16px);
+    margin-top: 8px;
+    padding: 6px 10px;
+  }
+
+  body.night .intro h1 {
+    font-size: 1.7rem;
+  }
+
+  body.night .intro h1::before,
+  body.night .intro h1::after {
+    display: none;
+  }
+
+  body.night .mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  body.night .dock {
+    width: calc(100% - 16px);
+    margin-bottom: 8px;
+    padding: 10px;
+    gap: 8px;
+    border-radius: 18px;
+  }
+
+  body.night .seasons button {
+    font-size: 0.72rem;
+    gap: 3px;
+    min-height: 34px;
+    padding: 6px 2px;
+  }
+
+  body.night .seasons svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  body.night .picture-row label,
+  body.night .picture-row button {
+    padding: 10px 12px;
+  }
+}
+
+@media (max-height: 720px) {
+  body.night .dock {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  body.night .hint {
+    min-height: 24px;
+    padding: 2px 8px;
+  }
 }
 
 @media (max-width: 420px) {

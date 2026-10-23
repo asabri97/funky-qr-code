@@ -9,14 +9,13 @@ const hint = document.querySelector<HTMLButtonElement>("#hint");
 const status = document.querySelector<HTMLElement>("#status");
 const empty = document.querySelector<HTMLElement>("#empty");
 const download = document.querySelector<HTMLButtonElement>("#download");
-const lede = document.querySelector<HTMLElement>("#lede");
 const seasons = document.querySelectorAll<HTMLButtonElement>("[data-season]");
 const tints = document.querySelectorAll<HTMLButtonElement>("[data-tint]");
 const themes = document.querySelectorAll<HTMLButtonElement>("[data-theme]");
 const picture = document.querySelector<HTMLInputElement>("#picture");
 const clearPicture = document.querySelector<HTMLButtonElement>("#clear-picture");
 
-if (!canvas || !stage || !input || !hint || !status || !empty || !download || !lede || !picture || !clearPicture) {
+if (!canvas || !stage || !input || !hint || !status || !empty || !download || !picture || !clearPicture) {
   throw new Error("Missing page structure");
 }
 
@@ -27,7 +26,6 @@ const hintButton = hint;
 const statusEl = status;
 const emptyEl = empty;
 const downloadButton = download;
-const ledeEl = lede;
 const pictureField = picture;
 const clearPictureButton = clearPicture;
 let theme: Theme = "day";
@@ -56,10 +54,6 @@ function showMessage(message: string, overlay: boolean) {
 function selectTheme(next: Theme) {
   theme = next;
   document.body.classList.toggle("night", next === "night");
-  ledeEl.textContent =
-    next === "night"
-      ? "A small solar system, turning on its own. Scroll down and it lies flat as a QR code."
-      : "The plaza turns on its own. Scroll down and it lies flat as a QR code.";
   view.setAttribute(
     "aria-label",
     diorama.hasPortrait
@@ -78,6 +72,7 @@ function selectTheme(next: Theme) {
   diorama.setTheme(next);
   hintButton.textContent = hintCopy(diorama.isFlat);
   refreshPictureClear();
+  fitStage();
 }
 
 function grow(text: string) {
@@ -263,8 +258,24 @@ function fitStage() {
   const rect = stageEl.getBoundingClientRect();
   const wide = Math.max(1, rect.width);
   const tall = Math.max(1, rect.height);
+  const introBox = document.querySelector(".intro")?.getBoundingClientRect();
+  const dockBox = document.querySelector(".dock")?.getBoundingClientRect();
+  if (document.body.classList.contains("night") && introBox && dockBox) {
+    diorama.setChrome(Math.max(0, introBox.bottom - rect.top), Math.max(0, rect.bottom - dockBox.top));
+  } else {
+    diorama.setChrome(0, 0);
+  }
+  view.style.transform = "";
   if (stageEl.classList.contains("flat")) {
-    const side = Math.floor(Math.min(wide, tall));
+    let side = Math.floor(Math.min(wide, tall));
+    if (document.body.classList.contains("night") && introBox && dockBox) {
+      const top = Math.max(0, introBox.bottom - rect.top);
+      const bottom = Math.max(0, rect.bottom - dockBox.top);
+      const gap = Math.max(1, tall - top - bottom);
+      side = Math.floor(Math.min(wide, gap) * 0.9);
+      const shift = top + gap / 2 - tall / 2;
+      view.style.transform = `translateY(${shift}px)`;
+    }
     view.style.width = `${side}px`;
     view.style.height = `${side}px`;
     diorama.resize(side, side);
@@ -277,5 +288,9 @@ function fitStage() {
 
 const observer = new ResizeObserver(() => fitStage());
 observer.observe(stageEl);
+const introEl = document.querySelector(".intro");
+const dockEl = document.querySelector(".dock");
+if (introEl) observer.observe(introEl);
+if (dockEl) observer.observe(dockEl);
 
 grow(linkField.value);

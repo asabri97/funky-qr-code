@@ -45,6 +45,7 @@ export class Diorama {
   private readonly system = new THREE.Group();
   private readonly orbits: Orbit[] = [];
   private readonly stars: THREE.Points;
+  private readonly sky: THREE.Group;
   private sun!: THREE.Mesh;
   private sunGlow!: THREE.Sprite;
   private moonPivot: THREE.Group | null = null;
@@ -57,7 +58,10 @@ export class Diorama {
   private hologramTexture: THREE.Texture | null = null;
   private portraitHeight = 0;
   private theme: Theme = "day";
-  private readonly nightSky = new THREE.Color(0x070b16);
+  private readonly nightSky = new THREE.Color(0x050b18);
+  private gazeX = 0;
+  private gazeY = 0;
+  private readonly reducedMotion: boolean;
   private model: SceneModel | null = null;
   private season: Season = "spring";
   private tint = SEASON_TINT.spring;
@@ -74,6 +78,8 @@ export class Diorama {
   private reportedFlat = false;
   private width = 1;
   private height = 1;
+  private chromeTop = 0;
+  private chromeBottom = 0;
   private frame = 0;
   private paintDirty = true;
   private viewDirty = true;
@@ -148,12 +154,19 @@ export class Diorama {
     this.blossoms.renderOrder = 2;
     this.turntable.add(this.blossoms);
     this.buildSystem();
+    this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.sky = new THREE.Group();
     this.stars = starField();
-    this.stars.visible = false;
-    this.scene.add(this.stars);
+    this.sky.add(this.stars);
+    this.sky.add(warmStars());
+    this.sky.add(nebula());
+    this.sky.add(foregroundRocks());
+    this.sky.visible = false;
+    this.scene.add(this.sky);
 
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointermove", this.onGaze);
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     window.addEventListener("pointerup", this.onPointerUp);
     this.frame = requestAnimationFrame(this.tick);
@@ -318,10 +331,20 @@ export class Diorama {
     this.viewDirty = true;
   }
 
+  setChrome(top: number, bottom: number) {
+    const nextTop = Math.max(0, top);
+    const nextBottom = Math.max(0, bottom);
+    if (nextTop === this.chromeTop && nextBottom === this.chromeBottom) return;
+    this.chromeTop = nextTop;
+    this.chromeBottom = nextBottom;
+    this.viewDirty = true;
+  }
+
   dispose() {
     cancelAnimationFrame(this.frame);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
+    this.canvas.removeEventListener("pointermove", this.onGaze);
     this.canvas.removeEventListener("wheel", this.onWheel);
     window.removeEventListener("pointerup", this.onPointerUp);
     this.renderer.dispose();
@@ -358,7 +381,7 @@ export class Diorama {
     }
 
     const span = this.model.grid + 3.2;
-    this.system.scale.setScalar(clamp(this.model.grid / 36, 0.78, 1.2));
+    this.system.scale.setScalar(clamp(this.model.grid / 30, 0.95, 1.4));
     this.platform.scale.set(span, 1, span);
     this.shadow.scale.set(span * 1.12, span * 1.12, 1);
     this.growWood(canopyRadius(this.model.modules));
@@ -416,9 +439,10 @@ export class Diorama {
         let ox = 0;
         let oz = 0;
         if (tile) {
-          xz = lerp(0.98, 1, flatten);
-          ySize = 0.16;
-          y = 0.08;
+          const raised = this.theme === "night" ? 0.14 + (block.shade + 1) * 0.12 : 0.16;
+          xz = lerp(this.theme === "night" ? 0.9 : 0.98, 1, flatten);
+          ySize = lerp(raised, 0.16, flatten);
+          y = ySize / 2;
         } else if (block.kind === "skirt") {
           const rock = this.theme === "night";
           if (rock && block.layer > 0) {
@@ -433,9 +457,19 @@ export class Diorama {
             y = ySize / 2;
           }
         } else if (block.kind === "canopy") {
-          xz = block.cap ? unit * flatten : 0;
-          ySize = block.cap ? lerp(0.16, 0.9, flatten) : 0;
-          y = block.cap ? 0.1 + ySize / 2 : -40;
+          if (this.theme === "night" && !block.cap) {
+            xz = 0.9 * fade;
+            ySize = (0.14 + (block.shade + 1) * 0.1) * fade;
+            y = ySize / 2;
+          } else {
+            xz = block.cap ? unit * flatten : 0;
+            ySize = block.cap ? lerp(0.16, 0.9, flatten) : 0;
+            y = block.cap ? 0.1 + ySize / 2 : -40;
+          }
+        } else if (this.theme === "night" && block.kind === "trunk") {
+          xz = unit * flatten;
+          ySize = lerp(0.16, 0.9, flatten);
+          y = ySize / 2;
         } else if (!block.structural) {
           xz = 0;
           ySize = 0;
@@ -471,6 +505,14 @@ export class Diorama {
       });
       bucket.mesh.instanceMatrix.needsUpdate = true;
       if (bucket.mesh.instanceColor) bucket.mesh.instanceColor.needsUpdate = true;
+      const glass = this.theme === "night" && t < 0.98;
+      const material = bucket.mesh.material as THREE.MeshBasicMaterial;
+      if (material.transparent !== glass) {
+        material.transparent = glass;
+        material.needsUpdate = true;
+      }
+      material.opacity = glass ? lerp(0.7, 1, flatten) : 1;
+      material.depthWrite = !glass;
     }
   }
 
@@ -478,7 +520,7 @@ export class Diorama {
     const fade = smoothstep(0.5, 1, t);
     if (this.theme === "night") {
       this.scene.background = null;
-      this.renderer.setClearColor(this.nightSky, lerp(0.82, 1, fade));
+      this.renderer.setClearColor(this.nightSky, fade);
     } else {
       const sky = this.cream;
       const flat = this.white;
@@ -487,9 +529,10 @@ export class Diorama {
       this.renderer.setClearColor(this.background, 1);
     }
     const alive = this.model !== null;
-    this.platform.visible = alive && t < 1;
+    const night = this.theme === "night";
+    this.platform.visible = alive && t < 1 && !night;
     this.shadow.visible = alive && t < 0.8;
-    (this.shadow.material as THREE.MeshBasicMaterial).opacity = 1 - smoothstep(0.15, 0.75, t);
+    (this.shadow.material as THREE.MeshBasicMaterial).opacity = (night ? 0.22 : 1) * (1 - smoothstep(0.15, 0.75, t));
     this.petals.visible = alive && t < 0.9;
   }
 
@@ -564,13 +607,27 @@ export class Diorama {
       return;
     }
 
-    const az = lerp(this.orbitAz, 0, smoothstep(0.15, 0.92, t));
-    const el = lerp(this.orbitEl, Math.PI / 2 - 0.012, t);
-    const fov = lerp(30, 7, t);
-    const framed = this.portraitHeight > 0 ? 0.72 : 0.64;
+    const night = this.theme === "night";
+    const sway = night && !this.pointer && !this.reducedMotion ? 1 - smoothstep(0, 0.3, t) : 0;
+    const az = lerp(this.orbitAz + this.gazeX * 0.05 * sway, 0, smoothstep(0.15, 0.92, t));
+    const nightEl = (34 * Math.PI) / 180;
+    const el = lerp((night ? nightEl : this.orbitEl) - this.gazeY * 0.025 * sway, Math.PI / 2 - 0.012, t);
+    const fov = lerp(night ? 28 : 30, 7, t);
+    const aspect = this.width / Math.max(1, this.height);
+    const topFrac = clamp(this.chromeTop / this.height, 0, 0.42);
+    const botFrac = clamp(this.chromeBottom / this.height, 0, 0.62);
+    const free = Math.max(0.3, 1 - topFrac - botFrac);
+    const narrow = aspect < 1;
+    const targetH = free * (narrow ? 0.72 : 0.58);
+    const targetW = narrow ? 0.72 : 0.48;
+    const framedH = Math.sin(nightEl) / (2 * targetH);
+    const framedW = 1.12 / (2 * targetW * aspect);
+    const nightFrame = Math.max(framedH, framedW);
+    const framed = this.portraitHeight > 0 ? 0.72 : night ? nightFrame : 0.64;
     const halfWant = lerp(grid * framed, grid * 0.5, t);
     const dist = halfWant / Math.tan((fov * Math.PI) / 360);
-    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : 8;
+    const lift = (botFrac - topFrac) * halfWant;
+    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : night ? -lift : 8;
     const lookY = lerp(pose, 0, t);
     this.persp.fov = fov;
     this.persp.aspect = this.canvas.width / Math.max(1, this.canvas.height);
@@ -697,9 +754,13 @@ export class Diorama {
   private buildSystem() {
     this.turntable.add(this.system);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffc14a });
-    this.sun = new THREE.Mesh(new THREE.SphereGeometry(1.45, 28, 18), sunMat);
-    this.sun.position.y = 3.2;
+    this.sun = new THREE.Mesh(new THREE.SphereGeometry(1.7, 32, 22), sunMat);
+    this.sun.position.y = 3.4;
     this.system.add(this.sun);
+    const sunLight = new THREE.PointLight(0xffc56a, 2.6, 46, 1.4);
+    sunLight.position.y = 3.4;
+    this.system.add(sunLight);
+    this.system.add(new THREE.AmbientLight(0x9eb0d4, 0.7));
     this.sunGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTexture(),
@@ -710,25 +771,25 @@ export class Diorama {
         depthWrite: false,
       }),
     );
-    this.sunGlow.position.y = 3.2;
-    this.sunGlow.scale.set(7.4, 7.4, 1);
+    this.sunGlow.position.y = 3.4;
+    this.sunGlow.scale.set(9.2, 9.2, 1);
     this.sunGlow.userData.baseOpacity = 0.9;
     this.system.add(this.sunGlow);
 
-    const bodies: { name: string; radius: number; size: number; color: number; speed: number; tilt: number; map?: THREE.Texture; ring?: boolean }[] = [
-      { name: "mercury", radius: 4.5, size: 0.42, color: 0xc4b8a8, speed: 0.62, tilt: 0.08 },
-      { name: "venus", radius: 6.3, size: 0.62, color: 0xe7c98a, speed: 0.4, tilt: -0.06 },
-      { name: "earth", radius: 8.4, size: 0.7, color: 0x3f86d6, speed: 0.28, tilt: 0.18, map: earthTexture() },
-      { name: "mars", radius: 10.6, size: 0.52, color: 0xc2654a, speed: 0.2, tilt: 0.05 },
-      { name: "jupiter", radius: 13.2, size: 1.15, color: 0xd8b48a, speed: 0.12, tilt: -0.1, map: jupiterTexture() },
-      { name: "saturn", radius: 16.2, size: 0.96, color: 0xe6d2a4, speed: 0.08, tilt: 0.22, ring: true },
+    const bodies: { name: string; radius: number; size: number; color: number; speed: number; tilt: number; phase: number; map?: THREE.Texture; ring?: boolean }[] = [
+      { name: "mercury", radius: 4.6, size: 0.38, color: 0xc4b8a8, speed: 0.34, tilt: 0.08, phase: 0.4 },
+      { name: "venus", radius: 6.4, size: 0.58, color: 0xe7c98a, speed: 0.24, tilt: -0.06, phase: 2.4 },
+      { name: "earth", radius: 8.5, size: 0.68, color: 0x3f86d6, speed: 0.16, tilt: 0.12, phase: 4.5, map: earthTexture() },
+      { name: "mars", radius: 10.5, size: 0.48, color: 0xc2654a, speed: 0.12, tilt: 0.05, phase: 1.2 },
+      { name: "jupiter", radius: 13.4, size: 1.28, color: 0xd8b48a, speed: 0.07, tilt: -0.08, phase: 0.85, map: jupiterTexture() },
+      { name: "saturn", radius: 16.6, size: 1.05, color: 0xe6d2a4, speed: 0.045, tilt: 0.28, phase: 2.55, ring: true },
     ];
     for (const body of bodies) {
       const pivot = new THREE.Group();
-      pivot.position.y = 3.2;
+      pivot.position.y = 3.4;
       pivot.rotation.x = body.tilt;
       const planet = new THREE.Mesh(
-        new THREE.SphereGeometry(body.size, 24, 16),
+        new THREE.SphereGeometry(body.size, 28, 18),
         new THREE.MeshBasicMaterial({ color: body.color, map: body.map }),
       );
       planet.position.x = body.radius;
@@ -744,21 +805,21 @@ export class Diorama {
       if (body.ring) {
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(body.size * 1.4, body.size * 2.15, 48),
-          new THREE.MeshBasicMaterial({ color: 0xf0e2bf, side: THREE.DoubleSide, transparent: true, opacity: 0.82 }),
+          new THREE.MeshBasicMaterial({ color: 0xe7c98a, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
         );
         ring.rotation.x = Math.PI / 2.35;
-        ring.userData.baseOpacity = 0.82;
+        ring.userData.baseOpacity = 0.9;
         planet.add(ring);
       }
       const path = new THREE.Mesh(
         new THREE.RingGeometry(body.radius - 0.045, body.radius + 0.045, 96),
-        new THREE.MeshBasicMaterial({ color: 0x9aafd4, side: THREE.DoubleSide, transparent: true, opacity: 0.28, depthWrite: false }),
+        new THREE.MeshBasicMaterial({ color: 0xc5d4ef, side: THREE.DoubleSide, transparent: true, opacity: 0.42, depthWrite: false }),
       );
       path.rotation.x = -Math.PI / 2;
-      path.userData.baseOpacity = 0.28;
+      path.userData.baseOpacity = 0.42;
       pivot.add(path);
       this.system.add(pivot);
-      this.orbits.push({ pivot, speed: body.speed, phase: body.radius });
+      this.orbits.push({ pivot, speed: body.speed, phase: body.phase });
     }
     this.system.visible = false;
   }
@@ -776,13 +837,13 @@ export class Diorama {
 
   private spinSystem(dt: number) {
     if (this.theme !== "night" || !this.model) return;
-    const time = this.clock.elapsedTime;
+    const time = this.reducedMotion ? 0 : this.clock.elapsedTime;
     for (const orbit of this.orbits) orbit.pivot.rotation.y = orbit.phase + time * orbit.speed;
     if (this.moonPivot) this.moonPivot.rotation.y = time * 1.8;
     const pulse = 1 + Math.sin(time * 1.7) * 0.045;
-    this.sun.scale.setScalar(pulse);
-    this.sunGlow.scale.set(7.4 * pulse, 7.4 * pulse, 1);
-    this.stars.rotation.y += dt * 0.02;
+    this.sun.scale.setScalar(this.reducedMotion ? 1 : pulse);
+    this.sunGlow.scale.set(9.2 * (this.reducedMotion ? 1 : pulse), 9.2 * (this.reducedMotion ? 1 : pulse), 1);
+    this.sky.rotation.y += dt * (this.reducedMotion ? 0 : 0.012);
   }
 
   private clearHologram() {
@@ -939,7 +1000,7 @@ export class Diorama {
     this.wood.visible = !night && visible && !posed;
     this.blossoms.visible = !night && visible && !posed;
     this.system.visible = night && visible && !posed;
-    this.stars.visible = night && this.model !== null && t < 0.8;
+    this.sky.visible = night && this.model !== null && t < 0.8;
     if (this.portrait) {
       const material = this.portrait.material as THREE.MeshBasicMaterial;
       material.transparent = show < 0.98;
@@ -962,6 +1023,13 @@ export class Diorama {
     if (event.button !== 0) return;
     this.pointer = { x: event.clientX, y: event.clientY, moved: false };
     this.canvas.setPointerCapture(event.pointerId);
+  };
+
+  private onGaze = (event: PointerEvent) => {
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    this.gazeX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.gazeY = ((event.clientY - rect.top) / rect.height) * 2 - 1;
   };
 
   private onPointerMove = (event: PointerEvent) => {
@@ -1126,21 +1194,109 @@ function jupiterTexture() {
 }
 
 function starField() {
-  const count = 380;
+  const count = 520;
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    const reach = 16 + Math.random() * 48;
+    const reach = 18 + Math.random() * 70;
     const angle = Math.random() * Math.PI * 2;
     positions[i * 3] = Math.cos(angle) * reach;
-    positions[i * 3 + 1] = 2 + Math.random() * 42;
-    positions[i * 3 + 2] = Math.sin(angle) * reach * (0.55 + Math.random() * 0.7);
+    positions[i * 3 + 1] = -4 + Math.random() * 56;
+    positions[i * 3 + 2] = Math.sin(angle) * reach * (0.5 + Math.random() * 0.8);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   return new THREE.Points(
     geometry,
-    new THREE.PointsMaterial({ color: 0xe7eeff, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 1, depthWrite: false }),
+    new THREE.PointsMaterial({ color: 0xe7eeff, size: 1.35, sizeAttenuation: false, transparent: true, opacity: 1, depthWrite: false }),
   );
+}
+
+function warmStars() {
+  const count = 36;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const reach = 24 + Math.random() * 50;
+    const angle = Math.random() * Math.PI * 2;
+    positions[i * 3] = Math.cos(angle) * reach;
+    positions[i * 3 + 1] = 6 + Math.random() * 30;
+    positions[i * 3 + 2] = Math.sin(angle) * reach;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({ color: 0xffd2a8, size: 2.1, sizeAttenuation: false, transparent: true, opacity: 0.8, depthWrite: false }),
+  );
+}
+
+function nebula() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (context) {
+    const left = context.createRadialGradient(90, 130, 8, 90, 130, 110);
+    left.addColorStop(0, "rgba(150, 186, 230, 0.45)");
+    left.addColorStop(1, "rgba(16, 35, 61, 0)");
+    context.fillStyle = left;
+    context.fillRect(0, 0, 256, 256);
+    const right = context.createRadialGradient(180, 110, 6, 180, 110, 90);
+    right.addColorStop(0, "rgba(90, 130, 190, 0.28)");
+    right.addColorStop(1, "rgba(10, 20, 38, 0)");
+    context.fillStyle = right;
+    context.fillRect(0, 0, 256, 256);
+    texture.needsUpdate = true;
+  }
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.55, depthWrite: false }),
+  );
+  sprite.position.set(0, 16, -8);
+  sprite.scale.set(78, 42, 1);
+  return sprite;
+}
+
+function rockTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (!context) return texture;
+  context.filter = "blur(2px)";
+  context.fillStyle = "rgba(12, 10, 14, 0.82)";
+  context.beginPath();
+  context.ellipse(32, 34, 22, 16, 0.2, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "rgba(28, 24, 30, 0.55)";
+  context.beginPath();
+  context.ellipse(24, 28, 8, 6, -0.4, 0, Math.PI * 2);
+  context.fill();
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function foregroundRocks() {
+  const group = new THREE.Group();
+  const map = rockTexture();
+  const spots: [number, number, number, number][] = [
+    [-38, 5, 24, 11],
+    [40, 7, 20, 9],
+    [-30, 18, -6, 7],
+    [32, 3, -14, 8],
+    [8, 22, 30, 6],
+  ];
+  for (const [x, y, z, scale] of spots) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map, color: 0x14110f, transparent: true, opacity: 0.78, depthWrite: false }),
+    );
+    sprite.position.set(x, y, z);
+    sprite.scale.set(scale, scale * 0.7, 1);
+    group.add(sprite);
+  }
+  return group;
 }
 
 function shadowTexture() {
