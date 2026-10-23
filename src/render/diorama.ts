@@ -58,7 +58,6 @@ export class Diorama {
   private hologramDeck: THREE.Object3D | null = null;
   private hologramFades: THREE.Material[] = [];
   private hologramTexture: THREE.Texture | null = null;
-  private portraitHeight = 0;
   private theme: Theme = "day";
   private readonly nightSky = new THREE.Color(0x050b18);
   private gazeX = 0;
@@ -235,13 +234,11 @@ export class Diorama {
       const material = this.portrait.material;
       if (!Array.isArray(material)) material.dispose();
       this.portrait = null;
-      this.portraitHeight = 0;
     }
     this.clearHologram();
     if (cells && cells.length > 0) {
       const mesh = new THREE.InstancedMesh(this.cube, new THREE.MeshBasicMaterial({ vertexColors: true }), cells.length);
       mesh.frustumCulled = false;
-      let top = 0;
       cells.forEach((cell, index) => {
         this.dummy.position.set(cell.x, cell.y, cell.z);
         this.dummy.scale.set(cell.size, cell.size, cell.size);
@@ -250,13 +247,11 @@ export class Diorama {
         mesh.setMatrixAt(index, this.dummy.matrix);
         this.color.setRGB(cell.color[0] / 255, cell.color[1] / 255, cell.color[2] / 255, THREE.SRGBColorSpace);
         mesh.setColorAt(index, this.color);
-        top = Math.max(top, cell.y + cell.size / 2);
       });
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       this.turntable.add(mesh);
       this.portrait = mesh;
-      this.portraitHeight = top;
     }
     if (wire && wire.pixels.length > 0) {
       this.hologram = this.buildHologram(wire);
@@ -602,11 +597,11 @@ export class Diorama {
     const targetW = narrow ? 0.72 : 0.5;
     const framedH = Math.sin(baseEl) / (2 * targetH);
     const framedW = 1.12 / (2 * targetW * aspect);
-    const framed = this.portraitHeight > 0 ? 0.72 : Math.max(framedH, framedW);
+    const framed = Math.max(framedH, framedW);
     const halfWant = lerp(grid * framed, grid * 0.86, t);
     const dist = halfWant / Math.tan((fov * Math.PI) / 360);
     const lift = (botFrac - topFrac) * halfWant;
-    const pose = this.portraitHeight > 0 ? this.portraitHeight * 0.46 : -lift + grid * 0.18;
+    const pose = -lift + grid * 0.18;
     const lookY = lerp(pose, 0, t);
     this.persp.fov = fov;
     this.persp.aspect = this.canvas.width / Math.max(1, this.canvas.height);
